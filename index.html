@@ -215,6 +215,10 @@
     <label>地面（日本視点）</label>
     <button class="toggle on" id="groundBtn">ON</button>
   </div>
+  <div class="row japan-only">
+    <label for="lightPol">光害の強さ</label>
+    <input id="lightPol" type="range" min="0" max="100" value="15" aria-label="光害の強さ" />
+  </div>
   <div class="row solar-only">
     <label>公転軌道</label>
     <button class="toggle on" id="orbitBtn">ON</button>
@@ -1577,6 +1581,8 @@ let speed = 0.06; // default: matches slider 5 (~18 min sim per real second)
 const playBtn = document.getElementById('play');
 playBtn.onclick = () => { playing = !playing; playBtn.textContent = playing ? '⏸ 一時停止' : '▶ 再生'; };
 document.getElementById('speed').oninput = (e) => { speed = e.target.value / 100 * 1.2; };
+let lightPol = 0.15; // 0 = pristine dark site (Bortle 1), 1 = inner city sky (Bortle 9)
+document.getElementById('lightPol').oninput = (e) => { lightPol = parseInt(e.target.value) / 100; };
 
 // ---- Simulated date/time (drives the faithful sky at 宮古島) ----
 let simTime = new Date();
@@ -1930,11 +1936,13 @@ function updateSkyColor() {
   else if (altDeg > -6)  _bgColor.copy(_twilightCol).lerp(_sunsetCol, (altDeg + 6) / 6);
   else if (altDeg > -18) _bgColor.copy(_nightCol).lerp(_twilightCol, (altDeg + 18) / 12);
   else _bgColor.copy(_nightCol);
-  scene.background = _bgColor;
   // stars wash out as the sky brightens (visible from -6° upward)
   const daylight = Math.max(0, Math.min(1, (altDeg + 6) / 12));
-  stars.material.opacity = 0.9 * (1 - daylight);
-  milkyWay.material.opacity = 0.5 * (1 - daylight);
+  const darkness = 1 - lightPol; // 1 = pristine dark site, 0 = inner city
+  if (altDeg < -6) _bgColor.lerp(new THREE.Color(0x3a2418), lightPol * 0.35); // city glow at night
+  scene.background = _bgColor;
+  stars.material.opacity   = 0.9 * (1 - daylight) * darkness;
+  milkyWay.material.opacity = 0.5 * (1 - daylight) * darkness;
 }
 
 let _lastTickMs = performance.now();
