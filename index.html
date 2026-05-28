@@ -1345,12 +1345,19 @@ function updateBodies(jd) {
     s.mesh.position.copy(s.local);
     if (s.glow) s.glow.position.copy(s.local);
   }
-  // When we're on Earth we render the textured globe at the scene origin; when
-  // we observe from elsewhere it's a body in the sky, not under our feet.
-  const earthAtCenter = obs === 'Earth' && view !== 'japan';
+  // Everything anchored to Earth (the globe, the ISS, the spin-axis line and
+  // Polaris-the-pole-star) only makes sense when we're observing FROM Earth.
+  // From any other body we're not at Earth, so hide them as a group.
+  const fromEarth = obs === 'Earth';
+  const earthAtCenter = fromEarth && view !== 'japan';
   earthMesh.visible = earthAtCenter;
   grid.visible = earthAtCenter;
   marker.visible = earthAtCenter;
+  issGroup.visible = fromEarth && view === 'space';
+  axisLine.visible = axisOn && earthAtCenter;
+  axisSouth.visible = axisOn && earthAtCenter;
+  polaris.visible = fromEarth;
+  glow.visible = fromEarth;
 
   // Moon phase shader: sun direction in world coords.
   const sun = skyBodies.find((s) => s.key === 'Sun');
@@ -1484,7 +1491,8 @@ function bindToggle(id, onClick) {
     onClick(on);
   };
 }
-bindToggle('axisBtn', (on) => { axisLine.visible = on; axisSouth.visible = on; axisLabel.style.display = on ? '' : 'none'; });
+let axisOn = true;
+bindToggle('axisBtn', (on) => { axisOn = on; }); // visibility applied each frame so it can also be gated by the observer
 bindToggle('umiBtn', (on) => { umiGroup.visible = on; });
 bindToggle('constBtn', (on) => { constGroup.visible = on; });
 bindToggle('skyBtn', (on) => { skyGroup.visible = on; });
@@ -1756,7 +1764,7 @@ function tick() {
     updateClockUI(jd);
     if (view === 'space') updateISS(jd);
   }
-  issGroup.visible = (view === 'space');
+  // (issGroup.visible is now handled in updateBodies based on the observer)
   if (playing && view === 'solar') {
     for (const pl of planets) { pl.angle += pl.rel * speed * 0.04; pl.mesh.position.set(Math.cos(pl.angle)*pl.orbit, 0, Math.sin(pl.angle)*pl.orbit); }
     moonAngle += MOON_REL * speed * 0.04;
@@ -1795,8 +1803,15 @@ function tick() {
   for (const L of planetLabels) L.el.style.opacity = '0';
 
   // labels
-  polaris.getWorldPosition(tmp); projectLabel(polarisLabel, tmp);
-  axisGroup.localToWorld(tmp.set(0, AXIS_LEN*0.25, 0)); projectLabel(axisLabel, tmp);
+  const _fromEarthLbl = solarObserver === 'overview' || solarObserver === 'Earth';
+  if (_fromEarthLbl) {
+    polaris.getWorldPosition(tmp); projectLabel(polarisLabel, tmp);
+    if (axisOn) { axisGroup.localToWorld(tmp.set(0, AXIS_LEN*0.25, 0)); projectLabel(axisLabel, tmp); }
+    else axisLabel.style.opacity = '0';
+  } else {
+    polarisLabel.style.opacity = '0';
+    axisLabel.style.opacity = '0';
+  }
   if (umiGroup.visible) {
     umiGroup.localToWorld(tmp.copy(umiPos.beta).lerp(umiPos.gamma, 0.5)); projectLabel(umiLabel, tmp);
     umiGroup.localToWorld(tmp.copy(umiPos.beta)); projectLabel(kochabLabel, tmp);
