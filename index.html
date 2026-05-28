@@ -1134,20 +1134,20 @@ function lunarLibration(jd) {
 const HISTORICAL_EVENTS = [
   { iso: '1054-07-04T22:00:00Z', name: '🌟 かに星雲超新星 (SN 1054)',
     jp: '中国・日本の天文学者が記録した「客星」。23日間昼間も見えた歴史的大爆発。',
-    hint: 'おうし座の方向に出現。日本ビューで南東の空を見上げよう。',
-    view: 'japan', focus: 'おうし座' },
+    hint: 'おうし座の方向に出現。星座をハイライトしました。',
+    view: 'space', focus: 'おうし座' },
   { iso: '1066-04-24T22:00:00Z', name: '☄ ハレー彗星 1066年回帰',
     jp: 'ノルマン征服の年に出現。バイユーのタペストリーに描かれた歴史的回帰。',
-    hint: '「有名な彗星」をONにして、ハレー彗星の位置を確認。',
-    view: 'japan', toggle: ['cometsBtn'], focus: 'ハレー彗星' },
+    hint: '宇宙ビューでハレー彗星の位置を確認。',
+    view: 'space', toggle: ['cometsBtn'], focus: 'ハレー彗星' },
   { iso: '1572-11-11T20:00:00Z', name: '🌟 ティコの超新星 (SN 1572)',
     jp: 'Tycho Brahe が観測。アリストテレスの「不変の天界」観を打ち砕いた。',
-    hint: 'カシオペヤ座に現れた超新星。北の空を見上げて。',
-    view: 'japan', focus: 'カシオペヤ座' },
+    hint: 'カシオペヤ座に現れた超新星。星座をハイライトしました。',
+    view: 'space', focus: 'カシオペヤ座' },
   { iso: '1604-10-09T18:00:00Z', name: '🌟 ケプラーの超新星 (SN 1604)',
     jp: '最後の銀河系内肉眼超新星。Kepler が詳細に観測。',
-    hint: 'へびつかい座の方向。日没後、南西の低い空。',
-    view: 'japan' },
+    hint: 'へびつかい座の方向。',
+    view: 'space' },
   { iso: '1610-01-07T21:00:00Z', name: '🔭 ガリレオが木星の衛星を発見',
     jp: 'イオ・エウロパ・ガニメデ・カリストの「ガリレオ衛星」初観測。望遠鏡天文学の幕開け。',
     hint: '木星にフォーカス。当時ガリレオが見たのと同じ夜空。',
@@ -1163,27 +1163,27 @@ const HISTORICAL_EVENTS = [
   { iso: '1843-02-27T03:00:00Z', name: '☄ 大彗星 1843 (C/1843 D1)',
     jp: '昼間も見えた史上最大級の彗星。「サングレーザー」として太陽をかすめた。',
     hint: '彗星トグルON。',
-    view: 'japan', toggle: ['cometsBtn'] },
+    view: 'space', toggle: ['cometsBtn'] },
   { iso: '1910-04-20T00:00:00Z', name: '☄ ハレー彗星 1910年回帰',
     jp: '地球がコマ尾を通過、青酸ガス騒動が起きた回帰。',
-    hint: 'ハレー彗星にフォーカス。',
-    view: 'japan', toggle: ['cometsBtn'], focus: 'ハレー彗星' },
+    hint: '宇宙ビューでハレー彗星にズームイン。',
+    view: 'space', toggle: ['cometsBtn'], focus: 'ハレー彗星' },
   { iso: '1969-07-20T20:17:00Z', name: '🚀 アポロ11号 月面着陸',
     jp: 'Neil Armstrong & Buzz Aldrin が静かの海に着陸。人類初の月面歩行。',
     hint: '宇宙ビューで月にズーム。アポロ着陸点トグルONで6つの旗を表示。',
     view: 'space', toggle: ['apolloBtn'], focus: '月' },
   { iso: '1986-02-09T11:00:00Z', name: '☄ ハレー彗星 1986年近日点',
     jp: 'Vega・Giotto 探査機が接近観測した近代の回帰。一生に一度の天体ショー。',
-    hint: 'ハレー彗星にフォーカス。',
-    view: 'japan', toggle: ['cometsBtn'], focus: 'ハレー彗星' },
+    hint: '宇宙ビューでハレー彗星にズームイン。',
+    view: 'space', toggle: ['cometsBtn'], focus: 'ハレー彗星' },
   { iso: '1994-07-16T20:00:00Z', name: '💥 シューメーカー・レヴィ第9彗星 木星衝突',
     jp: '木星に分裂彗星片が次々と衝突した観測史的事件。1週間にわたり衝突が続いた。',
     hint: '太陽系ビューで木星に注目。',
     view: 'solar', focus: '木星' },
   { iso: '1997-04-01T00:00:00Z', name: '☄ ヘール・ボップ彗星 近日点',
     jp: '20世紀後半最大の彗星。18か月にわたり肉眼で見えた、世代に一度の彗星。',
-    hint: 'ヘール・ボップ彗星にフォーカス。',
-    view: 'japan', toggle: ['cometsBtn'], focus: 'ヘール・ボップ彗星' },
+    hint: '宇宙ビューでヘール・ボップ彗星にズームイン。',
+    view: 'space', toggle: ['cometsBtn'], focus: 'ヘール・ボップ彗星' },
   { iso: '2009-07-22T02:00:00Z', name: '🌑 トカラ皆既日食',
     jp: '日本のトカラ列島で6分40秒の皆既日食。21世紀最長クラス。',
     hint: '日本ビューで太陽が月に隠される瞬間。',
@@ -1199,11 +1199,11 @@ const HISTORICAL_EVENTS = [
   { iso: '2024-10-12T00:00:00Z', name: '☄ 紫金山・ATLAS彗星 (C/2023 A3)',
     jp: '21世紀屈指の大彗星、夕空に長い尾を曳いた。',
     hint: '彗星トグルON。日没後の西の空に出現した。',
-    view: 'japan', toggle: ['cometsBtn'] },
+    view: 'space', toggle: ['cometsBtn'] },
   { iso: '2061-07-28T12:00:00Z', name: '☄ ハレー彗星 次回回帰',
     jp: 'あなたが見られる次のハレー回帰。次々世代への贈り物。',
-    hint: 'ハレー彗星にフォーカス。',
-    view: 'japan', toggle: ['cometsBtn'], focus: 'ハレー彗星' }
+    hint: '宇宙ビューでハレー彗星にズームイン。',
+    view: 'space', toggle: ['cometsBtn'], focus: 'ハレー彗星' }
 ];
 // ==ASTRO_INLINE_END==
 
@@ -2469,10 +2469,21 @@ historySelect.onchange = (e) => {
     const btn = document.getElementById(id);
     if (btn && !btn.classList.contains('on')) btn.click();
   }
-  // 4. Focus a target via the existing search machinery if specified.
+  // 4. Focus a target via the existing search machinery if specified. We
+  // (a) seed the search box so the user sees what's targeted, (b) re-orient
+  // earth/bodies for the new simTime so the focus aims at the right RA/Dec,
+  // (c) call doSearch() directly — the input element only listens to
+  // 'change'/Enter, not synthesized 'input'.
   if (ev.focus) {
     const input = document.getElementById('searchInput');
-    if (input) { input.value = ev.focus; input.dispatchEvent(new Event('input', { bubbles: true })); }
+    if (input) {
+      input.value = ev.focus;
+      const jd = julianDay(simTime);
+      earth.rotation.y = gmstDeg(jd) * Math.PI / 180;
+      earth.updateMatrixWorld(true);
+      updateBodies(jd);
+      doSearch();
+    }
   }
   // 5. Show the persistent description card.
   historyDetail.querySelector('.ed-title').textContent = ev.name;
@@ -2803,6 +2814,21 @@ controls.addEventListener('start', () => { if (focusing === 'space') focusing = 
 // Bodies are searchable too — their position changes each frame, so use getCenter.
 for (const b of skyBodies) {
   registry[b.jp] = { mats: [], getCenter: () => b.local.clone() };
+}
+// Comets too — they live in cometsGroup and move each frame; auto-show the
+// group so the focus actually finds something to look at.
+for (const cr of cometRenders) {
+  registry[cr.comet.name] = {
+    mats: [],
+    getCenter: () => {
+      if (!cometsGroup.visible) {
+        cometsGroup.visible = true;
+        const btn = document.getElementById('cometsBtn');
+        if (btn && !btn.classList.contains('on')) { btn.classList.add('on'); btn.textContent = 'ON'; }
+      }
+      return cr.group.position.clone();
+    }
+  };
 }
 
 // Lunar-phase keywords jump simulated time to the next such phase.
