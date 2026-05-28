@@ -181,8 +181,8 @@
     <label>天の川</label>
     <button class="toggle on" id="mwBtn">ON</button>
   </div>
-  <div class="row earth-only">
-    <label>他の星の見かけの軌跡</label>
+  <div class="row sky-only">
+    <label>黄道（惑星の道）</label>
     <button class="toggle" id="trailBtn">OFF</button>
   </div>
   <div class="row earth-only">
@@ -993,23 +993,23 @@ glow.scale.set(60, 60, 1);
 glow.position.copy(polaris.position);
 axisGroup.add(glow);
 
-// ---- Apparent star trails (circles around the pole) ----
-const trailGroup = new THREE.Group();
+// ---- Ecliptic line: the actual path the Sun, Moon and planets sweep across
+// the sky (Earth's orbital plane projected onto the celestial sphere). All
+// solar-system bodies stay within ±8° of this line. ----
+const trailGroup = new THREE.Group();   // keep the variable name so toggles still work
 trailGroup.visible = false;
 axisGroup.add(trailGroup);
-for (let i = 1; i <= 5; i++) {
-  const radius = 40 + i * 55;
-  const y = AXIS_LEN * 0.55 - i * 30; // spread along axis
+{
   const pts = [];
-  for (let a = 0; a <= 64; a++) {
-    const t = a/64 * Math.PI*2;
-    pts.push(new THREE.Vector3(Math.cos(t)*radius, y, Math.sin(t)*radius));
+  const jdRef = 2451545.0; // J2000 reference for obliquity — only shifts ~0.013°/century
+  for (let lonDeg = 0; lonDeg <= 360; lonDeg += 2) {
+    const eq = eclipticToEquatorial(lonDeg * Math.PI / 180, 0, jdRef);
+    pts.push(raDecToVec(eq.ra, eq.dec, AXIS_LEN * 0.99));
   }
-  const circle = new THREE.Line(
+  trailGroup.add(new THREE.LineLoop(
     new THREE.BufferGeometry().setFromPoints(pts),
-    new THREE.LineBasicMaterial({ color: 0x88c0ff, transparent: true, opacity: 0.35 })
-  );
-  trailGroup.add(circle);
+    new THREE.LineBasicMaterial({ color: 0xffd060, transparent: true, opacity: 0.55 })
+  ));
 }
 
 // ---- ISS (International Space Station) ----
