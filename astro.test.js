@@ -530,3 +530,78 @@ test('bodyEquFrom: Sun viewed from Mars points roughly opposite to Earth viewed 
 test('SKY_BODIES now includes Earth too', () => {
   assert.ok(SKY_BODIES.some((b) => b.key === 'Earth'));
 });
+
+// ---------------------------------------------------------------------------
+// Observer change — additional integrity tests (the feature the user verified)
+// ---------------------------------------------------------------------------
+test('helio: Earth-Mars distance over a year stays in [0.37, 2.7] AU', () => {
+  let minD = Infinity, maxD = 0;
+  for (let day = 0; day < 366; day += 5) {
+    const jd = julianDay(new Date(Date.UTC(2026, 0, 1 + day)));
+    const e = helio('Earth', jd), m = helio('Mars', jd);
+    const d = Math.hypot(m.x - e.x, m.y - e.y, m.z - e.z);
+    if (d < minD) minD = d;
+    if (d > maxD) maxD = d;
+  }
+  // 2026 has no Mars opposition (closest pass ~0.92 AU), so allow a wide band
+  assert.ok(minD > 0.5 && minD < 1.5, `closest approach ${minD} AU out of range`);
+  assert.ok(maxD > 2.0 && maxD < 2.8, `farthest separation ${maxD} AU out of range`);
+});
+
+test('helio: Sun-Earth distance is ~1 AU (0.98–1.02)', () => {
+  for (let m = 0; m < 12; m++) {
+    const jd = julianDay(new Date(Date.UTC(2026, m, 15)));
+    const e = helio('Earth', jd);
+    const d = Math.hypot(e.x, e.y, e.z);
+    assert.ok(d > 0.98 && d < 1.02, `Earth at month ${m}: ${d} AU`);
+  }
+});
+
+test('bodyEquFrom: direction-reverse symmetry — A→B opposite to B→A', () => {
+  // direction from A to B should be exactly the opposite of B to A
+  const jd = julianDay(new Date(Date.UTC(2026, 4, 28)));
+  for (const [a, b] of [['Earth', 'Mars'], ['Sun', 'Jupiter'], ['Moon', 'Saturn']]) {
+    const ab = bodyEquFrom(b, jd, a);
+    const ba = bodyEquFrom(a, jd, b);
+    // declinations are negatives of each other (Dec range -90..90)
+    close(ab.dec, -ba.dec, 0.001);
+    // RA differs by 12h (mod 24)
+    const diff = ((ab.ra - ba.ra) % 24 + 24) % 24;
+    close(Math.min(diff, 24 - diff), 12, 0.0001);
+  }
+});
+
+test('bodyEquFrom: Sun from Earth ≈ Sun direction matches geocentric Sun RA/Dec', () => {
+  const jd = julianDay(new Date(Date.UTC(2026, 4, 28)));
+  const a = bodyEquFrom('Sun', jd, 'Earth');
+  const b = sunEqu(jd);
+  close(a.ra, b.ra, 0.001);
+  close(a.dec, b.dec, 0.001);
+});
+
+test('SKY_BODIES: Earth is included as an observable planet', () => {
+  const earth = SKY_BODIES.find((b) => b.key === 'Earth');
+  assert.ok(earth, 'Earth missing from SKY_BODIES');
+  assert.equal(earth.kind, 'planet');
+});
+
+test('helio: inner planets (Mercury, Venus) closer to Sun than Earth', () => {
+  const jd = julianDay(new Date(Date.UTC(2026, 4, 28)));
+  for (const inner of ['Mercury', 'Venus']) {
+    const p = helio(inner, jd);
+    const d = Math.hypot(p.x, p.y, p.z);
+    const earthD = Math.hypot(helio('Earth', jd).x, helio('Earth', jd).y, helio('Earth', jd).z);
+    assert.ok(d < earthD, `${inner} (${d} AU) should be inside Earth (${earthD} AU)`);
+  }
+});
+
+test('helio: outer planets follow expected distance ordering at a sample date', () => {
+  const jd = julianDay(new Date(Date.UTC(2026, 4, 28)));
+  const dists = ['Mars', 'Jupiter', 'Saturn', 'Uranus', 'Neptune'].map((k) => {
+    const p = helio(k, jd);
+    return Math.hypot(p.x, p.y, p.z);
+  });
+  for (let i = 1; i < dists.length; i++) {
+    assert.ok(dists[i] > dists[i - 1], `planet ${i} should be farther: ${dists.join(', ')}`);
+  }
+});

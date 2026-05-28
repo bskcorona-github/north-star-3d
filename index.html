@@ -1307,7 +1307,7 @@ const moonMat = new THREE.ShaderMaterial({
 
 for (const b of SKY_BODIES) {
   const lum = b.kind === 'sun' || b.kind === 'moon';
-  const size = b.kind === 'sun' ? 17 : b.kind === 'moon' ? 13 : 7;
+  const size = b.kind === 'sun' ? 17 : b.kind === 'moon' ? 13 : b.key === 'Earth' ? 14 : 7;
   let mat;
   if (b.kind === 'moon') mat = moonMat;
   else if (planetTex[b.key]) mat = new THREE.MeshBasicMaterial({ map: planetTex[b.key] });
@@ -1338,7 +1338,10 @@ function updateBodies(jd) {
     if (!show) { s.el.style.opacity = '0'; continue; }
     const eq = bodyEquFrom(s.key, jd, obs);
     if (!eq) { s.mesh.visible = false; if (s.glow) s.glow.visible = false; continue; }
-    s.local.copy(raDecToVec(eq.ra, eq.dec, AXIS_LEN * 0.98));
+    // From an outside observer Earth & Moon project to nearly the same spot;
+    // pull Earth a touch closer so it wins the depth test.
+    const r = (s.key === 'Earth' && obs !== 'Earth') ? AXIS_LEN * 0.94 : AXIS_LEN * 0.98;
+    s.local.copy(raDecToVec(eq.ra, eq.dec, r));
     s.mesh.position.copy(s.local);
     if (s.glow) s.glow.position.copy(s.local);
   }
