@@ -101,7 +101,8 @@
      .observer-{earth,other} so each toggle only shows where it makes sense. */
   .obs-only { display: flex; }
   body.is-japan .obs-only { display: none; }
-  .japan-only, .sky-only, .earth-only { display: none; }
+  .japan-only, .sky-only, .earth-only, .solar-only { display: none; }
+  body.is-solar .solar-only { display: flex; }
   body.is-japan .japan-only,
   body.is-japan .sky-only,
   body.is-space .sky-only,
@@ -192,6 +193,10 @@
   <div class="row japan-only">
     <label>地面（日本視点）</label>
     <button class="toggle on" id="groundBtn">ON</button>
+  </div>
+  <div class="row solar-only">
+    <label>公転軌道</label>
+    <button class="toggle on" id="orbitBtn">ON</button>
   </div>
   <div class="note">💡 検索ボックスに「新月 / 三日月 / 上弦の月 / 満月 / 下弦の月」と入れるとその月相の日時へジャンプ。「月」「木星」「土星」など天体名・星座名でも検索できます。</div>
 </div>
@@ -1391,13 +1396,15 @@ sunGlow.scale.set(5, 5, 1);
 solarGroup.add(sunGlow);
 
 // planetDefs from astro.js; relative orbital speed derived from Kepler's 3rd law
+const solarOrbitsGroup = new THREE.Group();
+solarGroup.add(solarOrbitsGroup);
 const planets = [];
 const planetLabels = [];
 for (const p of planetDefs) {
   // orbit ring
   const ringPts = [];
   for (let a = 0; a <= 96; a++) { const t = a/96*Math.PI*2; ringPts.push(new THREE.Vector3(Math.cos(t)*p.orbit, 0, Math.sin(t)*p.orbit)); }
-  solarGroup.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints(ringPts), new THREE.LineBasicMaterial({ color: 0x335577, transparent: true, opacity: 0.5 })));
+  solarOrbitsGroup.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints(ringPts), new THREE.LineBasicMaterial({ color: 0x335577, transparent: true, opacity: 0.5 })));
   const mat = planetTex[p.en]
     ? new THREE.MeshStandardMaterial({ map: planetTex[p.en], roughness: 0.92, metalness: 0.0 })
     : new THREE.MeshStandardMaterial({ color: p.color, roughness: 0.85, metalness: 0.0 });
@@ -1511,6 +1518,7 @@ bindToggle('skyBtn', (on) => { skyGroup.visible = on; });
 bindToggle('trailBtn', (on) => { trailGroup.visible = on; });
 bindToggle('tiltBtn', (on) => { tiltOn = on; applyTilt(); });
 bindToggle('groundBtn', (on) => { groundOn = on; ground.visible = palmGroup.visible = on && view === 'japan'; });
+bindToggle('orbitBtn', (on) => { solarOrbitsGroup.visible = on; });
 bindToggle('triBtn', (on) => { triGroup.visible = on; });
 bindToggle('mwBtn', (on) => { milkyWay.visible = on; });
 
