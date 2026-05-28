@@ -1911,6 +1911,32 @@ const allCelestialLabels = () => { polarisLabel.style.opacity='0'; axisLabel.sty
   for (const s of skyBodies) s.el.style.opacity='0';
   for (const c of compassLabels) c.el.style.opacity='0';
   issLabel.style.opacity = '0'; };
+// ---- Day / night sky colour (only in Japan view, based on Sun altitude) ----
+const _sunLocal = new THREE.Vector3();
+const _dayCol = new THREE.Color(0x5a85b8);       // mid-day clear sky
+const _sunsetCol = new THREE.Color(0xb35a30);    // horizon orange
+const _twilightCol = new THREE.Color(0x1d1a3a);  // civil/nautical twilight
+const _nightCol = new THREE.Color(0x05060d);     // page background
+const _bgColor = new THREE.Color();
+function updateSkyColor() {
+  if (view !== 'japan') { scene.background = null; if (stars.material) stars.material.opacity = 0.9; if (milkyWay.material) milkyWay.material.opacity = 0.5; return; }
+  const sun = skyBodies.find((s) => s.key === 'Sun');
+  if (!sun || !sun.mesh.visible) return;
+  bodiesGroup.localToWorld(_sunLocal.copy(sun.local));
+  observerRig.worldToLocal(_sunLocal);
+  const altDeg = Math.asin(_sunLocal.y / _sunLocal.length()) * 180 / Math.PI;
+  if (altDeg > 5)        _bgColor.copy(_dayCol);
+  else if (altDeg > 0)   _bgColor.copy(_sunsetCol).lerp(_dayCol, altDeg / 5);
+  else if (altDeg > -6)  _bgColor.copy(_twilightCol).lerp(_sunsetCol, (altDeg + 6) / 6);
+  else if (altDeg > -18) _bgColor.copy(_nightCol).lerp(_twilightCol, (altDeg + 18) / 12);
+  else _bgColor.copy(_nightCol);
+  scene.background = _bgColor;
+  // stars wash out as the sky brightens (visible from -6° upward)
+  const daylight = Math.max(0, Math.min(1, (altDeg + 6) / 12));
+  stars.material.opacity = 0.9 * (1 - daylight);
+  milkyWay.material.opacity = 0.5 * (1 - daylight);
+}
+
 let _lastTickMs = performance.now();
 function tick() {
   requestAnimationFrame(tick);
@@ -1918,6 +1944,7 @@ function tick() {
   const dt = Math.min(0.1, (_now - _lastTickMs) / 1000); // seconds (cap to avoid huge jumps)
   _lastTickMs = _now;
   updateMeteors(dt);
+  updateSkyColor();
   if (view !== 'solar') {
     // faithful sky: advance simulated time, orient the globe by sidereal time,
     // and place the Sun/Moon/planets where they really are for that instant.
