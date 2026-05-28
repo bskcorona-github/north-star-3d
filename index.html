@@ -97,6 +97,10 @@
     z-index: 5; transition: opacity .2s;
   }
   .label.star { color: #ffe9a8; font-weight: 600; }
+  .solar-only { display: none; }
+  body.is-solar .solar-only { display: flex; }
+  #solarObserver { flex: 1.2; min-width: 0; background: rgba(8,12,26,0.9); border: 1px solid rgba(120,160,255,0.4);
+    color: #eaf0ff; border-radius: 8px; padding: 7px 8px; font-size: 13px; }
   .label.compass { font-size: 18px; font-weight: 700; letter-spacing: 0.12em;
     text-shadow: 0 0 8px rgba(0,0,0,0.95), 0 0 2px rgba(0,0,0,1); }
 </style>
@@ -124,6 +128,23 @@
     <button id="nowBtn" title="現在時刻にする">今</button>
   </div>
   <button id="play">⏸ 一時停止</button>
+  <div class="row solar-only">
+    <label for="solarObserver">観測地点</label>
+    <select id="solarObserver" aria-label="観測地点">
+      <option value="overview">🛰 太陽系全体</option>
+      <option value="Sun">☀ 太陽から</option>
+      <option value="Mercury">水星から</option>
+      <option value="Venus">金星から</option>
+      <option value="Earth">地球から</option>
+      <option value="Moon">🌙 月から</option>
+      <option value="Mars">火星から</option>
+      <option value="Jupiter">木星から</option>
+      <option value="Saturn">土星から</option>
+      <option value="Uranus">天王星から</option>
+      <option value="Neptune">海王星から</option>
+      <option value="Pluto">冥王星から</option>
+    </select>
+  </div>
   <div class="row">
     <label for="speed">時間の速さ</label>
     <input id="speed" type="range" min="0" max="100" value="5" aria-label="時間の速さ" />
@@ -1318,7 +1339,7 @@ for (const p of planetDefs) {
   solarGroup.add(mesh);
   const angle = Math.random() * Math.PI * 2;
   mesh.position.set(Math.cos(angle) * p.orbit, 0, Math.sin(angle) * p.orbit);
-  planets.push({ mesh, orbit: p.orbit, angle, rel: keplerRelSpeed(p.a) });
+  planets.push({ key: p.en, mesh, orbit: p.orbit, angle, rel: keplerRelSpeed(p.a) });
   const el = makeLabel(p.jp, '');
   el.style.color = '#' + new THREE.Color(p.color).getHexString();
   planetLabels.push({ el, mesh });
@@ -1326,6 +1347,19 @@ for (const p of planetDefs) {
 const sunLabel = makeLabel('☀ 太陽', 'star');
 solarGroup.add(new THREE.PointLight(0xffffff, 2.2, 0, 0.0)); // light from the Sun
 solarGroup.add(new THREE.AmbientLight(0x404858, 0.6));
+
+// Moon (orbits Earth in the solar scene; lets us "stand on the Moon" too)
+const earthInSolar = planets.find((p) => p.key === 'Earth');
+const moonMesh = new THREE.Mesh(
+  new THREE.SphereGeometry(0.11, 24, 24),
+  new THREE.MeshStandardMaterial({ map: planetTex.Moon, roughness: 0.9, metalness: 0.0 })
+);
+solarGroup.add(moonMesh);
+const moonLabel = makeLabel('🌙 月', '');
+moonLabel.style.color = '#dfe6f0';
+planetLabels.push({ el: moonLabel, mesh: moonMesh });
+let moonAngle = Math.random() * Math.PI * 2;
+const MOON_ORBIT_R = 0.55, MOON_REL = 13.4; // Moon orbits ~13.4× Earth's angular speed
 
 function projectLabel(el, worldPos) {
   // In the Japan view, HTML labels don't respect the 3D ground dome, so hide
@@ -1401,6 +1435,43 @@ bindToggle('groundBtn', (on) => { groundOn = on; ground.visible = palmGroup.visi
 bindToggle('triBtn', (on) => { triGroup.visible = on; });
 bindToggle('mwBtn', (on) => { milkyWay.visible = on; });
 
+// ---- Solar-view observer: pick which body you're standing on ----
+let solarObserver = 'overview';
+const solarObsSelect = document.getElementById('solarObserver');
+function bodyMeshFor(key) {
+  if (key === 'Sun') return sunMesh;
+  if (key === 'Moon') return moonMesh;
+  const p = planets.find((pp) => pp.key === key);
+  return p ? p.mesh : null;
+}
+function setSolarObserver(key) {
+  solarObserver = key;
+  sunMesh.visible = true; moonMesh.visible = true;
+  for (const p of planets) p.mesh.visible = true;
+  if (key === 'overview') {
+    camera.position.set(0, 20, 34);
+    controls.target.set(0, 0, 0);
+    return;
+  }
+  const m = bodyMeshFor(key);
+  if (!m) return;
+  m.visible = false; // we're "on" it — don't render our own platform
+  const pos = m.position.clone();
+  const outward = pos.length() < 0.01 ? new THREE.Vector3(0, 0.3, 1) : pos.clone().normalize();
+  camera.position.copy(pos).addScaledVector(outward, 0.6);
+  controls.target.copy(pos);
+}
+const _solarRel = new THREE.Vector3();
+function applySolarObserverFollow() {
+  if (solarObserver === 'overview') return;
+  const m = bodyMeshFor(solarObserver);
+  if (!m) return;
+  // body has moved this frame — slide camera + target by the same delta
+  _solarRel.copy(camera.position).sub(controls.target);
+  controls.target.copy(m.position);
+  camera.position.copy(m.position).add(_solarRel);
+}
+
 // ---- View switching: space / Japan ground / solar system ----
 const hint = document.getElementById('hint');
 const vSpace = document.getElementById('viewSpace');
@@ -1419,9 +1490,10 @@ function setView(v) {
   // standing on Earth, we shouldn't see our own globe's wireframe at our feet
   earthMesh.visible = !japan; grid.visible = !japan; marker.visible = !japan;
   earthGroup.visible = !solar;     // hides Earth + axis + all constellations
-  stars.visible = !solar;          // decorative background starfield
+  stars.visible = true;            // show decorative background stars everywhere
   solarGroup.visible = solar;
-  if (solar) { camera.position.set(0, 20, 34); controls.target.set(0, 0, 0); }
+  document.body.classList.toggle('is-solar', solar);
+  if (solar) setSolarObserver(solarObserver); // applies current observer (default 'overview')
   else if (v === 'space') { camera.position.copy(spaceCamPos); controls.target.set(0, 0, 0); }
   vSpace.classList.toggle('on', v === 'space');
   vJapan.classList.toggle('on', japan);
@@ -1438,6 +1510,7 @@ function setView(v) {
 vSpace.onclick = () => setView('space');
 vJapan.onclick = () => setView('japan');
 vSolar.onclick = () => setView('solar');
+solarObsSelect.onchange = () => setSolarObserver(solarObsSelect.value);
 
 // Look around in the Japan view: 1-finger / mouse = drag-yaw/pitch, 2-finger = pinch FOV.
 const activePointers = new Map(); // pointerId -> {x, y}
@@ -1605,7 +1678,8 @@ const tmp = new THREE.Vector3();
 const allCelestialLabels = () => { polarisLabel.style.opacity='0'; axisLabel.style.opacity='0'; umiLabel.style.opacity='0'; kochabLabel.style.opacity='0';
   for (const L of constLabels) L.el.style.opacity='0'; for (const L of skyLabels) L.el.style.opacity='0'; for (const L of triLabels) L.el.style.opacity='0';
   for (const s of skyBodies) s.el.style.opacity='0';
-  for (const c of compassLabels) c.el.style.opacity='0'; };
+  for (const c of compassLabels) c.el.style.opacity='0';
+  issLabel.style.opacity = '0'; };
 function tick() {
   requestAnimationFrame(tick);
   if (view !== 'solar') {
@@ -1619,7 +1693,18 @@ function tick() {
     if (view === 'space') updateISS(jd);
   }
   issGroup.visible = (view === 'space');
-  if (playing && view === 'solar') for (const pl of planets) { pl.angle += pl.rel * speed * 0.04; pl.mesh.position.set(Math.cos(pl.angle)*pl.orbit, 0, Math.sin(pl.angle)*pl.orbit); }
+  if (playing && view === 'solar') {
+    for (const pl of planets) { pl.angle += pl.rel * speed * 0.04; pl.mesh.position.set(Math.cos(pl.angle)*pl.orbit, 0, Math.sin(pl.angle)*pl.orbit); }
+    moonAngle += MOON_REL * speed * 0.04;
+  }
+  if (view === 'solar') {
+    // Moon tracks Earth every frame so 'on the Moon' observer can find it
+    moonMesh.position.set(
+      earthInSolar.mesh.position.x + Math.cos(moonAngle) * MOON_ORBIT_R, 0,
+      earthInSolar.mesh.position.z + Math.sin(moonAngle) * MOON_ORBIT_R
+    );
+    applySolarObserverFollow();
+  }
 
   // smoothly steer the view toward a searched constellation
   if (focusing === 'space') {
