@@ -696,6 +696,15 @@ export const COMETS = [
     name: 'ネオワイズ彗星', en: 'C/2020 F3',
     a: 358.6, e: 0.99918, i: 128.94, w: 37.28, O: 60.97,
     Tperi_jd: 2459033.0, period: 6800, color: 0xfff0a0
+  },
+  // C/2023 A3 (Tsuchinshan-ATLAS) — spectacular October 2024 comet.
+  // The real orbit is slightly hyperbolic; we clamp e just below 1 so the
+  // simple elliptical Kepler solver stays stable and the comet still passes
+  // through perihelion at the right time.
+  {
+    name: '紫金山・ATLAS彗星', en: 'C/2023 A3',
+    a: 8160.0, e: 0.99995, i: 139.10, w: 308.50, O: 21.55,
+    Tperi_jd: 2460589.2, period: 80660, color: 0xa8f5b0
   }
 ];
 
@@ -805,20 +814,23 @@ export function lunarLibration(jd) {
 export const HISTORICAL_EVENTS = [
   { iso: '1054-07-04T22:00:00Z', name: '🌟 かに星雲超新星 (SN 1054)',
     jp: '中国・日本の天文学者が記録した「客星」。23日間昼間も見えた歴史的大爆発。',
-    hint: 'おうし座の方向に出現。星座をハイライトしました。',
-    view: 'space', focus: 'おうし座' },
+    hint: 'おうし座の中で「客星」(✨マーカー) が爆発的に輝いた。',
+    view: 'space', focus: 'おうし座',
+    marker: { ra: 5.575, dec: 22.02, name: '✨ 客星 (SN 1054)', color: 0xfff0c8 } },
   { iso: '1066-04-24T22:00:00Z', name: '☄ ハレー彗星 1066年回帰',
     jp: 'ノルマン征服の年に出現。バイユーのタペストリーに描かれた歴史的回帰。',
     hint: '宇宙ビューでハレー彗星の位置を確認。',
     view: 'space', toggle: ['cometsBtn'], focus: 'ハレー彗星' },
   { iso: '1572-11-11T20:00:00Z', name: '🌟 ティコの超新星 (SN 1572)',
     jp: 'Tycho Brahe が観測。アリストテレスの「不変の天界」観を打ち砕いた。',
-    hint: 'カシオペヤ座に現れた超新星。星座をハイライトしました。',
-    view: 'space', focus: 'カシオペヤ座' },
+    hint: 'カシオペヤ座Wの中で「新星」(✨マーカー) が突然輝いた。',
+    view: 'space', focus: 'カシオペヤ座',
+    marker: { ra: 0.422, dec: 64.13, name: '✨ ティコの新星', color: 0xb8f0ff } },
   { iso: '1604-10-09T18:00:00Z', name: '🌟 ケプラーの超新星 (SN 1604)',
     jp: '最後の銀河系内肉眼超新星。Kepler が詳細に観測。',
-    hint: 'へびつかい座の方向。',
-    view: 'space' },
+    hint: 'へびつかい座の中で「新星」(✨マーカー) が出現した。',
+    view: 'space',
+    marker: { ra: 17.510, dec: -21.50, name: '✨ ケプラーの新星', color: 0xffd8a0 } },
   { iso: '1610-01-07T21:00:00Z', name: '🔭 ガリレオが木星の衛星を発見',
     jp: 'イオ・エウロパ・ガニメデ・カリストの「ガリレオ衛星」初観測。望遠鏡天文学の幕開け。',
     hint: '木星にフォーカス。当時ガリレオが見たのと同じ夜空。',
@@ -857,16 +869,16 @@ export const HISTORICAL_EVENTS = [
     view: 'space', toggle: ['cometsBtn'], focus: 'ヘール・ボップ彗星' },
   { iso: '2009-07-22T02:00:00Z', name: '🌑 トカラ皆既日食',
     jp: '日本のトカラ列島で6分40秒の皆既日食。21世紀最長クラス。',
-    hint: '日本ビューで太陽が月に隠される瞬間。',
-    view: 'japan', focus: '太陽' },
+    hint: '宮古島から太陽を見上げる。月が太陽を覆い隠す瞬間。',
+    view: 'japan', location: 'miyako', focus: '太陽' },
   { iso: '2020-12-21T18:30:00Z', name: '✨ 木星・土星 大接近',
     jp: '397年ぶりの「グレートコンジャンクション」。木星と土星がわずか0.1°まで接近。',
-    hint: '日本ビューで南西の低空、木星と土星が重なる。',
-    view: 'japan', focus: '木星' },
+    hint: '宇宙ビューで木星を見ると、すぐ隣に土星が並んで見える。',
+    view: 'space', focus: '木星' },
   { iso: '2024-04-08T18:18:00Z', name: '🌑 北米皆既日食',
     jp: 'メキシコ・米国・カナダを横断した皆既日食。',
-    hint: '観測地を「ニューヨーク」に変えて見るとリアル！',
-    view: 'japan', focus: '太陽' },
+    hint: 'ニューヨークに自動でジャンプ。日中の太陽を見上げると月が覆っていく。',
+    view: 'japan', location: 'nyc', focus: '太陽' },
   { iso: '2024-10-12T00:00:00Z', name: '☄ 紫金山・ATLAS彗星 (C/2023 A3)',
     jp: '21世紀屈指の大彗星、夕空に長い尾を曳いた。',
     hint: '彗星トグルON。日没後の西の空に出現した。',

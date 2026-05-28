@@ -1025,6 +1025,15 @@ const COMETS = [
     name: 'ネオワイズ彗星', en: 'C/2020 F3',
     a: 358.6, e: 0.99918, i: 128.94, w: 37.28, O: 60.97,
     Tperi_jd: 2459033.0, period: 6800, color: 0xfff0a0
+  },
+  // C/2023 A3 (Tsuchinshan-ATLAS) — spectacular October 2024 comet.
+  // The real orbit is slightly hyperbolic; we clamp e just below 1 so the
+  // simple elliptical Kepler solver stays stable and the comet still passes
+  // through perihelion at the right time.
+  {
+    name: '紫金山・ATLAS彗星', en: 'C/2023 A3',
+    a: 8160.0, e: 0.99995, i: 139.10, w: 308.50, O: 21.55,
+    Tperi_jd: 2460589.2, period: 80660, color: 0xa8f5b0
   }
 ];
 
@@ -1134,20 +1143,23 @@ function lunarLibration(jd) {
 const HISTORICAL_EVENTS = [
   { iso: '1054-07-04T22:00:00Z', name: '🌟 かに星雲超新星 (SN 1054)',
     jp: '中国・日本の天文学者が記録した「客星」。23日間昼間も見えた歴史的大爆発。',
-    hint: 'おうし座の方向に出現。星座をハイライトしました。',
-    view: 'space', focus: 'おうし座' },
+    hint: 'おうし座の中で「客星」(✨マーカー) が爆発的に輝いた。',
+    view: 'space', focus: 'おうし座',
+    marker: { ra: 5.575, dec: 22.02, name: '✨ 客星 (SN 1054)', color: 0xfff0c8 } },
   { iso: '1066-04-24T22:00:00Z', name: '☄ ハレー彗星 1066年回帰',
     jp: 'ノルマン征服の年に出現。バイユーのタペストリーに描かれた歴史的回帰。',
     hint: '宇宙ビューでハレー彗星の位置を確認。',
     view: 'space', toggle: ['cometsBtn'], focus: 'ハレー彗星' },
   { iso: '1572-11-11T20:00:00Z', name: '🌟 ティコの超新星 (SN 1572)',
     jp: 'Tycho Brahe が観測。アリストテレスの「不変の天界」観を打ち砕いた。',
-    hint: 'カシオペヤ座に現れた超新星。星座をハイライトしました。',
-    view: 'space', focus: 'カシオペヤ座' },
+    hint: 'カシオペヤ座Wの中で「新星」(✨マーカー) が突然輝いた。',
+    view: 'space', focus: 'カシオペヤ座',
+    marker: { ra: 0.422, dec: 64.13, name: '✨ ティコの新星', color: 0xb8f0ff } },
   { iso: '1604-10-09T18:00:00Z', name: '🌟 ケプラーの超新星 (SN 1604)',
     jp: '最後の銀河系内肉眼超新星。Kepler が詳細に観測。',
-    hint: 'へびつかい座の方向。',
-    view: 'space' },
+    hint: 'へびつかい座の中で「新星」(✨マーカー) が出現した。',
+    view: 'space',
+    marker: { ra: 17.510, dec: -21.50, name: '✨ ケプラーの新星', color: 0xffd8a0 } },
   { iso: '1610-01-07T21:00:00Z', name: '🔭 ガリレオが木星の衛星を発見',
     jp: 'イオ・エウロパ・ガニメデ・カリストの「ガリレオ衛星」初観測。望遠鏡天文学の幕開け。',
     hint: '木星にフォーカス。当時ガリレオが見たのと同じ夜空。',
@@ -1186,16 +1198,16 @@ const HISTORICAL_EVENTS = [
     view: 'space', toggle: ['cometsBtn'], focus: 'ヘール・ボップ彗星' },
   { iso: '2009-07-22T02:00:00Z', name: '🌑 トカラ皆既日食',
     jp: '日本のトカラ列島で6分40秒の皆既日食。21世紀最長クラス。',
-    hint: '日本ビューで太陽が月に隠される瞬間。',
-    view: 'japan', focus: '太陽' },
+    hint: '宮古島から太陽を見上げる。月が太陽を覆い隠す瞬間。',
+    view: 'japan', location: 'miyako', focus: '太陽' },
   { iso: '2020-12-21T18:30:00Z', name: '✨ 木星・土星 大接近',
     jp: '397年ぶりの「グレートコンジャンクション」。木星と土星がわずか0.1°まで接近。',
-    hint: '日本ビューで南西の低空、木星と土星が重なる。',
-    view: 'japan', focus: '木星' },
+    hint: '宇宙ビューで木星を見ると、すぐ隣に土星が並んで見える。',
+    view: 'space', focus: '木星' },
   { iso: '2024-04-08T18:18:00Z', name: '🌑 北米皆既日食',
     jp: 'メキシコ・米国・カナダを横断した皆既日食。',
-    hint: '観測地を「ニューヨーク」に変えて見るとリアル！',
-    view: 'japan', focus: '太陽' },
+    hint: 'ニューヨークに自動でジャンプ。日中の太陽を見上げると月が覆っていく。',
+    view: 'japan', location: 'nyc', focus: '太陽' },
   { iso: '2024-10-12T00:00:00Z', name: '☄ 紫金山・ATLAS彗星 (C/2023 A3)',
     jp: '21世紀屈指の大彗星、夕空に長い尾を曳いた。',
     hint: '彗星トグルON。日没後の西の空に出現した。',
@@ -1545,6 +1557,44 @@ function rebuildPlanetPaths(jdStart) {
   }
 }
 rebuildPlanetPaths(julianDay(new Date())); // initial paths anchored to "now"
+
+// ---- Scenario marker — one pulsing bright "new star" the historical-event
+// dropdown can pin anywhere on the celestial sphere. Used to show what was
+// actually visible at the moment (especially supernovae that the simulator
+// doesn't otherwise represent: SN 1054 in Taurus, Tycho 1572 in Cassiopeia…)
+// Reuses axisGroup so it rotates with the rest of the sky when time scrolls.
+const scenarioMarkerGroup = new THREE.Group();
+scenarioMarkerGroup.visible = false;
+axisGroup.add(scenarioMarkerGroup);
+const scenarioMarkerMesh = new THREE.Mesh(
+  new THREE.SphereGeometry(7, 18, 18),
+  new THREE.MeshBasicMaterial({ color: 0xffffff })
+);
+scenarioMarkerGroup.add(scenarioMarkerMesh);
+const scenarioMarkerGlow = new THREE.Sprite(new THREE.SpriteMaterial({
+  map: glowTex, color: 0xfff8d0, transparent: true,
+  blending: THREE.AdditiveBlending, depthWrite: false
+}));
+scenarioMarkerGlow.scale.set(90, 90, 1);
+scenarioMarkerGroup.add(scenarioMarkerGlow);
+const scenarioMarkerLabel = makeLabel('', '');
+scenarioMarkerLabel.style.fontWeight = '700';
+scenarioMarkerLabel.style.fontSize = '13px';
+scenarioMarkerLabel.style.textShadow = '0 0 8px rgba(255,248,208,0.9)';
+
+function showScenarioMarker(raHours, decDeg, name, colorHex) {
+  const color = colorHex || 0xfff8d0;
+  scenarioMarkerGroup.position.copy(raDecToVec(raHours, decDeg, AXIS_LEN * 0.96));
+  scenarioMarkerMesh.material.color.setHex(color);
+  scenarioMarkerGlow.material.color.setHex(color);
+  scenarioMarkerLabel.textContent = name || '';
+  scenarioMarkerLabel.style.color = '#' + new THREE.Color(color).getHexString();
+  scenarioMarkerGroup.visible = true;
+}
+function hideScenarioMarker() {
+  scenarioMarkerGroup.visible = false;
+  scenarioMarkerLabel.style.opacity = '0';
+}
 
 // ---- Shooting stars (random meteors streaking across the sky) ----
 const meteorsGroup = new THREE.Group();
@@ -2447,6 +2497,7 @@ const historyDetail = document.getElementById('historyDetail');
 historyDetail.querySelector('.ed-close').onclick = () => {
   historyDetail.style.display = 'none';
   historySelect.value = '';
+  hideScenarioMarker();
 };
 historySelect.onchange = (e) => {
   const iso = e.target.value;
@@ -2469,20 +2520,47 @@ historySelect.onchange = (e) => {
     const btn = document.getElementById(id);
     if (btn && !btn.classList.contains('on')) btn.click();
   }
-  // 4. Focus a target via the existing search machinery if specified. We
-  // (a) seed the search box so the user sees what's targeted, (b) re-orient
-  // earth/bodies for the new simTime so the focus aims at the right RA/Dec,
-  // (c) call doSearch() directly — the input element only listens to
-  // 'change'/Enter, not synthesized 'input'.
+  // 4. Switch observation location if specified (e.g. eclipses where the
+  // path of totality is somewhere specific).
+  if (ev.location) {
+    locationSelect.value = ev.location;
+    locationSelect.dispatchEvent(new Event('change', { bubbles: true }));
+  }
+  // 5. Pin a pulsing scenario marker at a specific RA/Dec — primarily for
+  // supernovae which the simulator otherwise doesn't represent. The marker
+  // re-uses axisGroup so it sits on the celestial sphere with the stars.
+  if (ev.marker) {
+    showScenarioMarker(ev.marker.ra, ev.marker.dec, ev.marker.name || ev.name, ev.marker.color);
+  } else {
+    hideScenarioMarker();
+  }
+  // 6. Refresh earth/bodies for the new simTime so any focus that follows
+  // can aim at the right RA/Dec, then drive the focus through doSearch()
+  // (the existing search box honours the same syntax: constellation, body,
+  // or comet name — all already registered).
+  const jd = julianDay(simTime);
+  earth.rotation.y = -gmstDeg(jd) * Math.PI / 180;
+  earth.updateMatrixWorld(true);
+  updateBodies(jd);
+  // Focus highlights the relevant constellation/body (dims everything else),
+  // then — if there's a marker too — we OVERRIDE the camera aim so the marker
+  // sits dead-centre instead of being a small dot off to the side.
   if (ev.focus) {
     const input = document.getElementById('searchInput');
-    if (input) {
-      input.value = ev.focus;
-      const jd = julianDay(simTime);
-      earth.rotation.y = gmstDeg(jd) * Math.PI / 180;
-      earth.updateMatrixWorld(true);
-      updateBodies(jd);
-      doSearch();
+    if (input) { input.value = ev.focus; doSearch(); }
+  }
+  if (ev.marker) {
+    const Cw = axisGroup.localToWorld(scenarioMarkerGroup.position.clone());
+    if (view === 'japan') {
+      const aim = aimYawPitch(observerRig.worldToLocal(Cw.clone()));
+      targetYaw = aim.yaw; targetPitch = aim.pitch; focusing = 'japan';
+    } else {
+      // Sit 100 units back from the marker, look at it — the pulsing nova
+      // fills the frame, with the highlighted constellation as context.
+      const dist = Cw.length() || 1;
+      focusCamPos.copy(Cw).multiplyScalar((dist - 100) / dist);
+      controls.target.copy(Cw);
+      focusing = 'space';
     }
   }
   // 5. Show the persistent description card.
@@ -2854,7 +2932,7 @@ function doSearch() {
     if (jd != null) {
       simTime = jdToDate(jd);
       syncInputsFromSim();
-      earth.rotation.y = gmstDeg(jd) * Math.PI / 180; // re-orient now so focus aims correctly
+      earth.rotation.y = -gmstDeg(jd) * Math.PI / 180; // re-orient now so focus aims correctly
       earth.updateMatrixWorld(true);                    // propagate to observerRig
       updateBodies(jd);                                 // position the Moon for the new date
       if (planetPathsGroup.visible) rebuildPlanetPaths(jd);
@@ -2926,7 +3004,7 @@ function tick() {
     // and place the Sun/Moon/planets where they really are for that instant.
     if (playing) simTime = new Date(simTime.getTime() + speed * 300000);
     const jd = julianDay(simTime);
-    earth.rotation.y = gmstDeg(jd) * Math.PI / 180; // Greenwich sidereal angle
+    earth.rotation.y = -gmstDeg(jd) * Math.PI / 180; // Greenwich sidereal angle
     updateBodies(jd);
     updateClockUI(jd);
     if (view === 'space') updateISS(jd);
@@ -3015,6 +3093,15 @@ function tick() {
     for (const L of apolloGroup.userData.labels) { L.dotMesh.getWorldPosition(tmp); projectLabel(L.el, tmp); }
   } else if (apolloGroup) {
     for (const L of apolloGroup.userData.labels) L.el.style.opacity = '0';
+  }
+  if (scenarioMarkerGroup.visible) {
+    const t = performance.now() * 0.001;
+    const pulse = 0.65 + 0.35 * Math.sin(t * 4); // bright nova throbs at ~0.6 Hz
+    scenarioMarkerGlow.material.opacity = pulse;
+    scenarioMarkerMesh.scale.setScalar(0.85 + 0.25 * pulse);
+    scenarioMarkerGroup.getWorldPosition(tmp); projectLabel(scenarioMarkerLabel, tmp);
+  } else {
+    scenarioMarkerLabel.style.opacity = '0';
   }
   for (const s of skyBodies) {
     // updateBodies already hides the observer's own mesh; don't let projection re-show its label
