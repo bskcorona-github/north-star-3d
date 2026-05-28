@@ -42,6 +42,15 @@
   }
   #play:hover { filter: brightness(1.1); }
   .note { font-size: 11px; color: #ffd86b; margin-top: 12px; line-height: 1.55; border-top: 1px solid rgba(120,160,255,0.2); padding-top: 10px; }
+  .actions { display: flex; gap: 6px; margin: 6px 0 12px; }
+  .actions button { flex: 1; background: rgba(120,160,255,0.18); border: 1px solid rgba(120,160,255,0.4);
+    color: #dfe6ff; border-radius: 8px; padding: 8px 6px; font-size: 12px; cursor: pointer; transition: background .15s; }
+  .actions button:hover { background: rgba(120,160,255,0.35); }
+  #toast { position: fixed; left: 50%; bottom: 60px; transform: translateX(-50%); z-index: 30;
+    background: rgba(20,28,55,0.96); border: 1px solid rgba(120,160,255,0.5); color: #eaf0ff;
+    padding: 10px 18px; border-radius: 10px; font-size: 13px; opacity: 0; pointer-events: none;
+    transition: opacity .2s; box-shadow: 0 6px 22px rgba(0,0,0,0.5); }
+  #toast.show { opacity: 1; }
   .search { display: flex; gap: 6px; margin: 4px 0 12px; }
   #searchInput { flex: 1; min-width: 0; background: rgba(8,12,26,0.9); border: 1px solid rgba(120,160,255,0.4);
     color: #eaf0ff; border-radius: 8px; padding: 8px 10px; font-size: 13px; }
@@ -117,9 +126,13 @@
 <body>
 <div id="app"></div>
 <button id="panelToggle" aria-label="メニュー">☰</button>
-<div id="ui"
+<div id="ui">
   <h1>🌌 宮古島の星空シミュレータ</h1>
   <p class="sub">日付・時刻を指定して、その瞬間の宮古島の空を再現します。星座・惑星・月相を検索でジャンプ。</p>
+  <div class="actions">
+    <button id="shareBtn" title="この日時・ビューのリンクをクリップボードへ">🔗 シェア</button>
+    <button id="screenshotBtn" title="今の見た目を PNG で保存">📷 保存</button>
+  </div>
   <div class="seg">
     <button id="viewSpace" class="segbtn on">🛰 宇宙</button>
     <button id="viewJapan" class="segbtn">🗾 日本</button>
@@ -190,6 +203,10 @@
     <label>惑星の軌跡</label>
     <button class="toggle" id="planetPathBtn">OFF</button>
   </div>
+  <div class="row sky-only">
+    <label>流れ星</label>
+    <button class="toggle" id="meteorBtn">OFF</button>
+  </div>
   <div class="row earth-only">
     <label>地軸の傾き(23.4°)</label>
     <button class="toggle" id="tiltBtn">OFF</button>
@@ -206,6 +223,7 @@
 </div>
 <div id="hint">🖱 ドラッグ=視点回転 / ホイール=ズーム</div>
 <div id="tip" class="tip"></div>
+<div id="toast"></div>
 
 <script type="importmap">
 {
@@ -757,7 +775,7 @@ function bodyEquFrom(targetKey, jd, observerKey = 'Earth') {
 const app = document.getElementById('app');
 
 // ---- Renderer / Scene / Camera ----
-const renderer = new THREE.WebGLRenderer({ antialias: true });
+const renderer = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true });
 renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
 renderer.setSize(innerWidth, innerHeight);
 app.appendChild(renderer.domElement);
@@ -1058,6 +1076,50 @@ function rebuildPlanetPaths(jdStart) {
   }
 }
 rebuildPlanetPaths(julianDay(new Date())); // initial paths anchored to "now"
+
+// ---- Shooting stars (random meteors streaking across the sky) ----
+const meteorsGroup = new THREE.Group();
+meteorsGroup.visible = false;
+axisGroup.add(meteorsGroup);
+const activeMeteors = [];
+const _meteorTangent = new THREE.Vector3(), _meteorUp = new THREE.Vector3(0, 1, 0);
+
+function spawnMeteor() {
+  // random spot on the celestial sphere
+  const ra = Math.random() * 24;
+  const dec = (Math.random() - 0.5) * 140; // -70..70°
+  const start = raDecToVec(ra, dec, AXIS_LEN * 0.94);
+  // pick a tangent direction perpendicular to the radial; random rotation around it
+  _meteorTangent.crossVectors(start, _meteorUp).normalize();
+  const angle = Math.random() * Math.PI * 2;
+  _meteorTangent.applyAxisAngle(start.clone().normalize(), angle);
+  const len = 60 + Math.random() * 70;
+  const end = start.clone().addScaledVector(_meteorTangent, len);
+
+  const geom = new THREE.BufferGeometry().setFromPoints([start, end]);
+  const mat = new THREE.LineBasicMaterial({ color: 0xfff8d0, transparent: true, opacity: 1, depthTest: false });
+  const line = new THREE.Line(geom, mat);
+  line.renderOrder = 5;
+  meteorsGroup.add(line);
+  activeMeteors.push({ line, mat, life: 0, maxLife: 0.7 + Math.random() * 0.6 });
+}
+
+function updateMeteors(dt) {
+  if (!meteorsGroup.visible) return;
+  if (Math.random() < dt * 0.8) spawnMeteor(); // ~0.8 / sec on average
+  for (let i = activeMeteors.length - 1; i >= 0; i--) {
+    const m = activeMeteors[i];
+    m.life += dt;
+    if (m.life >= m.maxLife) {
+      meteorsGroup.remove(m.line);
+      m.line.geometry.dispose();
+      m.mat.dispose();
+      activeMeteors.splice(i, 1);
+    } else {
+      m.mat.opacity = 1 - (m.life / m.maxLife);
+    }
+  }
+}
 
 // ---- ISS (International Space Station) ----
 // A small visible satellite orbiting Earth at the real altitude/inclination/
@@ -1567,6 +1629,7 @@ bindToggle('planetPathBtn', (on) => {
   planetPathsGroup.visible = on;
   if (on) rebuildPlanetPaths(julianDay(simTime)); // re-anchor to current time so bodies sit on their tracks
 });
+bindToggle('meteorBtn', (on) => { meteorsGroup.visible = on; });
 bindToggle('tiltBtn', (on) => { tiltOn = on; applyTilt(); });
 bindToggle('groundBtn', (on) => { groundOn = on; ground.visible = palmGroup.visible = on && view === 'japan'; });
 bindToggle('orbitBtn', (on) => { solarOrbitsGroup.visible = on; });
@@ -1848,8 +1911,13 @@ const allCelestialLabels = () => { polarisLabel.style.opacity='0'; axisLabel.sty
   for (const s of skyBodies) s.el.style.opacity='0';
   for (const c of compassLabels) c.el.style.opacity='0';
   issLabel.style.opacity = '0'; };
+let _lastTickMs = performance.now();
 function tick() {
   requestAnimationFrame(tick);
+  const _now = performance.now();
+  const dt = Math.min(0.1, (_now - _lastTickMs) / 1000); // seconds (cap to avoid huge jumps)
+  _lastTickMs = _now;
+  updateMeteors(dt);
   if (view !== 'solar') {
     // faithful sky: advance simulated time, orient the globe by sidereal time,
     // and place the Sun/Moon/planets where they really are for that instant.
@@ -1943,6 +2011,70 @@ function tick() {
     for (const c of compassLabels) c.el.style.opacity = '0';
   }
 }
+// ---- Share URL & Screenshot ----
+const toast = document.getElementById('toast');
+let _toastTimer = null;
+function showToast(text) {
+  toast.textContent = text;
+  toast.classList.add('show');
+  clearTimeout(_toastTimer);
+  _toastTimer = setTimeout(() => toast.classList.remove('show'), 2400);
+}
+
+function buildShareURL() {
+  const params = new URLSearchParams();
+  params.set('d', simTime.toISOString());
+  params.set('v', view);
+  if (solarObserver !== 'overview' && solarObserver !== 'Earth') params.set('o', solarObserver);
+  return location.origin + location.pathname + '#' + params.toString();
+}
+
+document.getElementById('shareBtn').onclick = async () => {
+  const url = buildShareURL();
+  try {
+    await navigator.clipboard.writeText(url);
+    showToast('🔗 URLをコピーしました — LINEやメールで送れます');
+  } catch {
+    // fallback: open prompt so user can copy manually
+    prompt('このURLをコピーしてください:', url);
+  }
+};
+
+document.getElementById('screenshotBtn').onclick = () => {
+  renderer.render(scene, activeCamera); // ensure latest frame is in buffer
+  renderer.domElement.toBlob((blob) => {
+    if (!blob) { showToast('スクショに失敗しました'); return; }
+    const a = document.createElement('a');
+    const ts = `${simTime.getFullYear()}-${String(simTime.getMonth()+1).padStart(2,'0')}-${String(simTime.getDate()).padStart(2,'0')}_${String(simTime.getHours()).padStart(2,'0')}${String(simTime.getMinutes()).padStart(2,'0')}`;
+    a.href = URL.createObjectURL(blob);
+    a.download = `miyako-sky_${ts}.png`;
+    document.body.appendChild(a); a.click(); a.remove();
+    URL.revokeObjectURL(a.href);
+    showToast('📷 スクショを保存しました');
+  });
+};
+
+// Apply state from URL hash (e.g. someone shared a link)
+function applyURLState() {
+  const hash = location.hash.replace(/^#/, '');
+  if (!hash) return false;
+  const params = new URLSearchParams(hash);
+  let touched = false;
+  if (params.has('d')) {
+    const d = new Date(params.get('d'));
+    if (!isNaN(d.getTime())) { simTime = d; syncInputsFromSim(); touched = true; }
+  }
+  if (params.has('o')) {
+    solarObserver = params.get('o');
+    solarObsSelect.value = solarObserver;
+    applyObserverClass();
+    touched = true;
+  }
+  if (params.has('v')) view = params.get('v'); // setView will be called next
+  return touched;
+}
+applyURLState();
+
 setView(view); // apply touch-aware hint & initial classes
 tick();
 
