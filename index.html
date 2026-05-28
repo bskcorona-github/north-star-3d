@@ -154,6 +154,30 @@
     <button id="nowBtn" title="現在時刻にする">今</button>
   </div>
   <button id="play">⏸ 一時停止</button>
+  <div class="row earth-only">
+    <label for="locationSelect">📍 観測地</label>
+    <select id="locationSelect" aria-label="観測地">
+      <option value="miyako">宮古島</option>
+      <option value="naha">那覇</option>
+      <option value="fukuoka">福岡</option>
+      <option value="osaka">大阪</option>
+      <option value="tokyo">東京</option>
+      <option value="sapporo">札幌</option>
+      <option value="seoul">ソウル</option>
+      <option value="beijing">北京</option>
+      <option value="honolulu">ホノルル</option>
+      <option value="la">ロサンゼルス</option>
+      <option value="nyc">ニューヨーク</option>
+      <option value="london">ロンドン</option>
+      <option value="paris">パリ</option>
+      <option value="sydney">シドニー</option>
+      <option value="rio">リオデジャネイロ</option>
+      <option value="equator">🟢 赤道（ガラパゴス）</option>
+      <option value="npole">⬆ 北極点</option>
+      <option value="spole">⬇ 南極点</option>
+      <option value="gps">📡 GPSで現在地</option>
+    </select>
+  </div>
   <div class="row obs-only">
     <label for="solarObserver">観測地点</label>
     <select id="solarObserver" aria-label="観測地点">
@@ -861,8 +885,10 @@ const grid = new THREE.LineSegments(
 );
 earth.add(grid);
 
-// a marker on the surface (e.g. a city) to make rotation undeniable
-const markerLat = MIYAKO.latDeg * Math.PI/180, markerLon = MIYAKO.lonEastDeg * Math.PI/180; // 宮古島
+// a marker on the surface (e.g. a city) to make rotation undeniable.
+// markerLat/Lon are mutable: setLocation() re-points the observer at any place on Earth.
+let markerLat = MIYAKO.latDeg * Math.PI/180, markerLon = MIYAKO.lonEastDeg * Math.PI/180; // 宮古島
+let currentLocName = MIYAKO.name;
 const marker = new THREE.Mesh(new THREE.SphereGeometry(0.05, 16, 16), new THREE.MeshBasicMaterial({ color: 0xff5a5a }));
 marker.position.set(
   R * Math.cos(markerLat) * Math.cos(markerLon),
@@ -901,6 +927,38 @@ function applyObserverLook() {
   observerPitch.rotation.x = obsPitch;
 }
 applyObserverLook();
+
+// Re-point the observer at any latitude/longitude on Earth. Used by the 観測地
+// dropdown and the GPS option. We keep the same earth-parented rig and just
+// move/orient it — the sky machinery (LST via earth rotation) updates for free.
+function setLocation(latDeg, lonEastDeg, name) {
+  markerLat = latDeg * Math.PI / 180;
+  markerLon = lonEastDeg * Math.PI / 180;
+  marker.position.set(
+    R * Math.cos(markerLat) * Math.cos(markerLon),
+    R * Math.sin(markerLat),
+    R * Math.cos(markerLat) * Math.sin(markerLon)
+  );
+  // Rebuild the local basis: +Y = zenith (up), −Z = due north, +X = due east.
+  const up2 = marker.position.clone().normalize();
+  let north2 = new THREE.Vector3(0, 1, 0).addScaledVector(up2, -up2.y);
+  // At the geographic poles the "north" tangent is undefined (zero vector);
+  // fall back to a stable arbitrary tangent so the basis stays well-defined.
+  if (north2.lengthSq() < 1e-8) north2.set(1, 0, 0);
+  north2.normalize();
+  const camBack2 = north2.clone().multiplyScalar(-1);
+  const camRight2 = new THREE.Vector3().crossVectors(up2, camBack2).normalize();
+  const basis2 = new THREE.Matrix4().makeBasis(camRight2, up2, camBack2);
+  observerRig.position.copy(up2.clone().multiplyScalar(R));
+  observerRig.quaternion.setFromRotationMatrix(basis2);
+  obsYaw = 0;
+  obsPitch = Math.abs(markerLat); // aim at the visible celestial pole
+  applyObserverLook();
+  currentLocName = name;
+  clockText.title = `${name} ${Math.abs(latDeg).toFixed(2)}°${latDeg >= 0 ? 'N' : 'S'}, ${Math.abs(lonEastDeg).toFixed(2)}°${lonEastDeg >= 0 ? 'E' : 'W'}`;
+  updateClockUI(julianDay(simTime));
+  showToast(`📍 観測地: ${name}`);
+}
 
 // the ground you stand on: a warm-tinted lower-hemisphere dome around the
 // observer (Miyako-jima — tropical sand/grass evening). The dome sits inside
@@ -1648,7 +1706,7 @@ function detectEclipse(jd) {
 const eventChip = document.getElementById('eventChip');
 function updateClockUI(jd) {
   const ph = moonPhaseLabel(jd);
-  clockText.textContent = `📍 宮古島  ${simTime.getFullYear()}/${pad(simTime.getMonth() + 1)}/${pad(simTime.getDate())} ${pad(simTime.getHours())}:${pad(simTime.getMinutes())}  ${ph.emoji} ${ph.name}`;
+  clockText.textContent = `📍 ${currentLocName}  ${simTime.getFullYear()}/${pad(simTime.getMonth() + 1)}/${pad(simTime.getDate())} ${pad(simTime.getHours())}:${pad(simTime.getMinutes())}  ${ph.emoji} ${ph.name}`;
   const shower = activeMeteorShower(simTime);
   const ecl = detectEclipse(jd);
   const parts = [];
@@ -1731,6 +1789,54 @@ function applySolarObserverFollow() {
   controls.target.copy(m.position);
   camera.position.copy(m.position).add(_solarRel);
 }
+
+// ---- Observation location presets (drives setLocation via the 📍 観測地 picker) ----
+// Coordinates: latitude in degrees (+ = N), longitude in degrees east of Greenwich
+// (+ = E, − = W). Picked from common-knowledge city centres; precision to ~0.01°
+// is plenty for naked-eye astronomy.
+const LOCATIONS = {
+  miyako:   { name: '宮古島',         lat:  24.74, lon:  125.28 },
+  naha:     { name: '那覇',           lat:  26.21, lon:  127.69 },
+  fukuoka:  { name: '福岡',           lat:  33.59, lon:  130.40 },
+  osaka:    { name: '大阪',           lat:  34.69, lon:  135.50 },
+  tokyo:    { name: '東京',           lat:  35.69, lon:  139.69 },
+  sapporo:  { name: '札幌',           lat:  43.07, lon:  141.35 },
+  seoul:    { name: 'ソウル',         lat:  37.57, lon:  126.98 },
+  beijing:  { name: '北京',           lat:  39.90, lon:  116.41 },
+  honolulu: { name: 'ホノルル',       lat:  21.31, lon: -157.86 },
+  la:       { name: 'ロサンゼルス',   lat:  34.05, lon: -118.24 },
+  nyc:      { name: 'ニューヨーク',   lat:  40.71, lon:  -74.01 },
+  london:   { name: 'ロンドン',       lat:  51.51, lon:   -0.13 },
+  paris:    { name: 'パリ',           lat:  48.85, lon:    2.35 },
+  sydney:   { name: 'シドニー',       lat: -33.87, lon:  151.21 },
+  rio:      { name: 'リオデジャネイロ', lat: -22.91, lon:  -43.17 },
+  equator:  { name: '赤道（ガラパゴス）', lat:   0.00, lon:  -90.00 },
+  npole:    { name: '北極点',         lat:  89.99, lon:    0.00 }, // ε avoids singular basis
+  spole:    { name: '南極点',         lat: -89.99, lon:    0.00 }
+};
+const locationSelect = document.getElementById('locationSelect');
+locationSelect.onchange = (e) => {
+  const key = e.target.value;
+  if (key === 'gps') {
+    if (!navigator.geolocation) {
+      showToast('このブラウザは位置情報に対応していません');
+      locationSelect.value = 'miyako';
+      return;
+    }
+    showToast('📡 GPSで現在地を取得中…');
+    navigator.geolocation.getCurrentPosition(
+      (pos) => setLocation(pos.coords.latitude, pos.coords.longitude, '📡 現在地'),
+      (err) => {
+        showToast('位置情報の取得に失敗: ' + (err.message || '許可されていません'));
+        locationSelect.value = 'miyako';
+      },
+      { enableHighAccuracy: false, timeout: 8000, maximumAge: 600000 }
+    );
+    return;
+  }
+  const loc = LOCATIONS[key];
+  if (loc) setLocation(loc.lat, loc.lon, loc.name);
+};
 
 // ---- View switching: space / Japan ground / solar system ----
 const hint = document.getElementById('hint');
@@ -2107,6 +2213,9 @@ function buildShareURL() {
   params.set('d', simTime.toISOString());
   params.set('v', view);
   if (solarObserver !== 'overview' && solarObserver !== 'Earth') params.set('o', solarObserver);
+  if (locationSelect.value && locationSelect.value !== 'miyako' && locationSelect.value !== 'gps') {
+    params.set('loc', locationSelect.value);
+  }
   return location.origin + location.pathname + '#' + params.toString();
 }
 
@@ -2152,6 +2261,10 @@ function applyURLState() {
     touched = true;
   }
   if (params.has('v')) view = params.get('v'); // setView will be called next
+  if (params.has('loc')) {
+    const loc = LOCATIONS[params.get('loc')];
+    if (loc) { setLocation(loc.lat, loc.lon, loc.name); locationSelect.value = params.get('loc'); touched = true; }
+  }
   return touched;
 }
 applyURLState();
