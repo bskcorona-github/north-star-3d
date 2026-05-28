@@ -1031,26 +1031,29 @@ axisGroup.add(planetPathsGroup);
 {
   const J2000_JD = 2451545.0;
   const defs = [
-    { key: 'Moon',    color: 0xdfe6f0, periodYr: 27.3217 / 365.25 }, // sidereal month
-    { key: 'Mercury', color: 0xb0a090, periodYr: 0.241 },
-    { key: 'Venus',   color: 0xe8d8a0, periodYr: 0.616 },
-    { key: 'Mars',    color: 0xd0552f, periodYr: 1.881 },
-    { key: 'Jupiter', color: 0xd9b58a, periodYr: 11.862 },
-    { key: 'Saturn',  color: 0xe3d6a6, periodYr: 29.457 },
-    { key: 'Uranus',  color: 0xa9e6e6, periodYr: 84.011 },
-    { key: 'Neptune', color: 0x5878e6, periodYr: 164.79 }
+    { key: 'Mercury', color: 0xb0a090, periodYr: 0.241,  opacity: 0.55, r: 0.985 },
+    { key: 'Venus',   color: 0xe8d8a0, periodYr: 0.616,  opacity: 0.55, r: 0.985 },
+    { key: 'Mars',    color: 0xd0552f, periodYr: 1.881,  opacity: 0.55, r: 0.985 },
+    { key: 'Jupiter', color: 0xd9b58a, periodYr: 11.862, opacity: 0.55, r: 0.985 },
+    { key: 'Saturn',  color: 0xe3d6a6, periodYr: 29.457, opacity: 0.55, r: 0.985 },
+    { key: 'Uranus',  color: 0xa9e6e6, periodYr: 84.011, opacity: 0.55, r: 0.985 },
+    { key: 'Neptune', color: 0x5878e6, periodYr: 164.79, opacity: 0.55, r: 0.985 },
+    // Moon drawn last + brighter + a hair closer so it stands out of the planet band
+    { key: 'Moon',    color: 0xfff2a8, periodYr: 27.3217 / 365.25, opacity: 0.95, r: 0.975 }
   ];
   for (const p of defs) {
     const pts = [];
     const N = 360, dur = p.periodYr * 365.25;
     for (let i = 0; i <= N; i++) {
       const eq = bodyEqu(p.key, J2000_JD + (i / N) * dur);
-      pts.push(raDecToVec(eq.ra, eq.dec, AXIS_LEN * 0.985));
+      pts.push(raDecToVec(eq.ra, eq.dec, AXIS_LEN * p.r));
     }
-    planetPathsGroup.add(new THREE.Line(
+    const line = new THREE.Line(
       new THREE.BufferGeometry().setFromPoints(pts),
-      new THREE.LineBasicMaterial({ color: p.color, transparent: true, opacity: 0.55 })
-    ));
+      new THREE.LineBasicMaterial({ color: p.color, transparent: true, opacity: p.opacity })
+    );
+    if (p.key === 'Moon') line.renderOrder = 2;
+    planetPathsGroup.add(line);
   }
 }
 
