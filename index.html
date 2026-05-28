@@ -21,7 +21,12 @@
   #ui h1 { font-size: 16px; margin: 0 0 4px; letter-spacing: .02em; }
   #ui p.sub { font-size: 11.5px; margin: 0 0 14px; color: #9fb0d8; line-height: 1.5; }
   .row { display: flex; align-items: center; gap: 10px; margin: 10px 0; font-size: 13px; }
-  .row label { flex: 1; }
+  .row label { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  /* Long-option <select>s default to fit-content width and overflow the panel.
+     Clamp them to the row's available space so they stay inside #ui. */
+  .row select { flex: 1.4; min-width: 0; max-width: 100%; background: rgba(20,30,60,0.55);
+    border: 1px solid rgba(120,160,255,0.35); border-radius: 8px; color: #dfe6ff;
+    padding: 5px 8px; font-size: 12px; cursor: pointer; }
   button.toggle {
     background: rgba(80,120,255,0.18); border: 1px solid rgba(120,160,255,0.4);
     color: #dfe6ff; border-radius: 8px; padding: 4px 10px; cursor: pointer; font-size: 12px;
@@ -146,7 +151,7 @@
     <button id="searchClear" title="ハイライト解除">✕</button>
   </div>
   <div class="row">
-    <label for="historySelect">📜 歴史的天文事件</label>
+    <label for="historySelect" title="歴史的天文事件">📜 天文史</label>
     <select id="historySelect" aria-label="歴史的天文事件">
       <option value="">— 選んでジャンプ —</option>
     </select>
