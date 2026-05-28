@@ -124,7 +124,7 @@
   <button id="play">⏸ 一時停止</button>
   <div class="row">
     <label for="speed">時間の速さ</label>
-    <input id="speed" type="range" min="0" max="100" value="35" aria-label="時間の速さ" />
+    <input id="speed" type="range" min="0" max="100" value="15" aria-label="時間の速さ" />
   </div>
   <div class="row">
     <label>自転軸を表示</label>
@@ -488,8 +488,9 @@ const toDeg = (r) => r / RAD;
 const norm360 = (d) => ((d % 360) + 360) % 360;
 const norm24 = (h) => ((h % 24) + 24) % 24;
 
-// Julian Day from a JS Date (uses its absolute UTC instant).
+// Julian Day from a JS Date (uses its absolute UTC instant) and back.
 function julianDay(date) { return date.getTime() / 86400000 + 2440587.5; }
+function jdToDate(jd) { return new Date((jd - 2440587.5) * 86400000); }
 function centuriesSinceJ2000(jd) { return (jd - 2451545.0) / 36525; }
 
 // Greenwich Mean Sidereal Time (degrees, 0–360).
@@ -613,6 +614,42 @@ function moonPhase(jd) {
   const T = centuriesSinceJ2000(jd);
   const D = norm360(297.8501921 + 445267.1114034 * T); // mean elongation Sun–Moon
   return { elongationDeg: D, illuminated: (1 - Math.cos(toRad(D))) / 2 };
+}
+
+// Find the next Julian Day after `jdStart` at which the Sun-Moon elongation
+// hits `targetDeg`: 0 = new moon, 90 = first quarter, 180 = full, 270 = last.
+// Scans in half-day steps then bisects to ~minute precision.
+function nextLunarPhase(jdStart, targetDeg) {
+  const diff = (jd) => ((moonPhase(jd).elongationDeg - targetDeg + 540) % 360) - 180;
+  const STEP = 0.5;
+  let prevJd = jdStart, prevD = diff(jdStart);
+  for (let i = 1; i <= 80; i++) { // up to 40 days (synodic month ~29.5)
+    const jd = jdStart + i * STEP;
+    const d = diff(jd);
+    if (prevD < 0 && d >= 0) {
+      let lo = prevJd, hi = jd;
+      for (let k = 0; k < 30; k++) {
+        const mid = (lo + hi) / 2;
+        if (diff(mid) < 0) lo = mid; else hi = mid;
+      }
+      return (lo + hi) / 2;
+    }
+    prevJd = jd; prevD = d;
+  }
+  return null;
+}
+
+// Pretty emoji + label for the current moon phase.
+function moonPhaseLabel(jd) {
+  const D = moonPhase(jd).elongationDeg;
+  if (D < 22.5 || D >= 337.5) return { emoji: '🌑', name: '新月' };
+  if (D < 67.5)  return { emoji: '🌒', name: '三日月' };
+  if (D < 112.5) return { emoji: '🌓', name: '上弦の月' };
+  if (D < 157.5) return { emoji: '🌔', name: '十三夜月' };
+  if (D < 202.5) return { emoji: '🌕', name: '満月' };
+  if (D < 247.5) return { emoji: '🌖', name: '十六夜' };
+  if (D < 292.5) return { emoji: '🌗', name: '下弦の月' };
+  return { emoji: '🌘', name: '有明月' };
 }
 
 // Convenience: all sky bodies (Sun, Moon, naked-eye + outer planets) for a date.
@@ -1009,10 +1046,31 @@ axisGroup.add(milkyWay);
 const bodiesGroup = new THREE.Group();
 axisGroup.add(bodiesGroup);
 const skyBodies = [];
+
+// Moon: shaded by the Sun's direction so the user sees the actual crescent/full phase.
+const moonMat = new THREE.ShaderMaterial({
+  uniforms: { sunDir: { value: new THREE.Vector3(1, 0, 0) } },
+  vertexShader: `
+    varying vec3 vN;
+    void main() {
+      vN = normalize(mat3(modelMatrix) * normal);
+      gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+    }`,
+  fragmentShader: `
+    uniform vec3 sunDir;
+    varying vec3 vN;
+    void main() {
+      float l = max(dot(vN, normalize(sunDir)), 0.0);
+      vec3 col = vec3(0.93, 0.94, 0.97) * (0.03 + 0.97 * l);
+      gl_FragColor = vec4(col, 1.0);
+    }`
+});
+
 for (const b of SKY_BODIES) {
   const lum = b.kind === 'sun' || b.kind === 'moon';
-  const size = b.kind === 'sun' ? 17 : b.kind === 'moon' ? 12 : 7;
-  const mesh = new THREE.Mesh(new THREE.SphereGeometry(size, 20, 20), new THREE.MeshBasicMaterial({ color: b.color }));
+  const size = b.kind === 'sun' ? 17 : b.kind === 'moon' ? 13 : 7;
+  const mat = b.kind === 'moon' ? moonMat : new THREE.MeshBasicMaterial({ color: b.color });
+  const mesh = new THREE.Mesh(new THREE.SphereGeometry(size, 24, 24), mat);
   bodiesGroup.add(mesh);
   let glow = null;
   if (lum) {
@@ -1025,12 +1083,24 @@ for (const b of SKY_BODIES) {
   el.style.color = '#' + new THREE.Color(b.color).getHexString();
   skyBodies.push({ ...b, mesh, glow, el, local: new THREE.Vector3() });
 }
+
+const _sunWorld = new THREE.Vector3(), _moonWorld = new THREE.Vector3();
 function updateBodies(jd) {
   for (const s of skyBodies) {
     const { ra, dec } = bodyEqu(s.key, jd);
     s.local.copy(raDecToVec(ra, dec, AXIS_LEN * 0.98));
     s.mesh.position.copy(s.local);
     if (s.glow) s.glow.position.copy(s.local);
+  }
+  // Shine the Moon: sun direction in world coords; scale the glow with the lit fraction.
+  const sun = skyBodies.find((s) => s.key === 'Sun');
+  const moon = skyBodies.find((s) => s.key === 'Moon');
+  if (sun && moon) {
+    bodiesGroup.localToWorld(_sunWorld.copy(sun.local));
+    bodiesGroup.localToWorld(_moonWorld.copy(moon.local));
+    moonMat.uniforms.sunDir.value.copy(_sunWorld).sub(_moonWorld).normalize();
+    const ph = moonPhase(jd).illuminated;
+    if (moon.glow) moon.glow.material.opacity = Math.max(0.08, ph * 0.95);
   }
 }
 
@@ -1091,7 +1161,7 @@ function applyTilt() { earthGroup.rotation.z = tiltOn ? TILT : 0; }
 
 // ---- UI wiring ----
 let playing = true;
-let speed = 0.35;
+let speed = 0.18; // default: ~30 min sim per real second (matches slider 15)
 const playBtn = document.getElementById('play');
 playBtn.onclick = () => { playing = !playing; playBtn.textContent = playing ? '⏸ 一時停止' : '▶ 再生'; };
 document.getElementById('speed').oninput = (e) => { speed = e.target.value / 100 * 1.2; };
@@ -1114,8 +1184,9 @@ function setSimFromInputs() {
 dateInput.onchange = setSimFromInputs;
 timeInput.onchange = setSimFromInputs;
 document.getElementById('nowBtn').onclick = () => { simTime = new Date(); syncInputsFromSim(); };
-function updateClockUI() {
-  clockText.textContent = `📍 宮古島  ${simTime.getFullYear()}/${pad(simTime.getMonth() + 1)}/${pad(simTime.getDate())} ${pad(simTime.getHours())}:${pad(simTime.getMinutes())}`;
+function updateClockUI(jd) {
+  const ph = moonPhaseLabel(jd);
+  clockText.textContent = `📍 宮古島  ${simTime.getFullYear()}/${pad(simTime.getMonth() + 1)}/${pad(simTime.getDate())} ${pad(simTime.getHours())}:${pad(simTime.getMinutes())}  ${ph.emoji} ${ph.name}`;
   if (playing && document.activeElement !== dateInput && document.activeElement !== timeInput) syncInputsFromSim();
 }
 syncInputsFromSim();
@@ -1275,9 +1346,10 @@ function focusOn(name) {
   if (!entry) return;
   setDim(true);
   for (const m of entry.mats) m.opacity = 0.95;
-  focusMark.position.copy(entry.center);
+  const center = entry.getCenter ? entry.getCenter() : entry.center; // bodies move every frame
+  focusMark.position.copy(center);
   focusMark.visible = true;
-  const Cw = axisGroup.localToWorld(entry.center.clone());
+  const Cw = axisGroup.localToWorld(center.clone());
   if (view === 'japan') {
     const aim = aimYawPitch(observerRig.worldToLocal(Cw.clone()));
     targetYaw = aim.yaw; targetPitch = aim.pitch;
@@ -1290,12 +1362,36 @@ function focusOn(name) {
 }
 controls.addEventListener('start', () => { if (focusing === 'space') focusing = null; });
 
+// Bodies are searchable too — their position changes each frame, so use getCenter.
+for (const b of skyBodies) {
+  registry[b.jp] = { mats: [], getCenter: () => b.local.clone() };
+}
+
+// Lunar-phase keywords jump simulated time to the next such phase.
+// Elongation Sun-Moon at each named phase. 三日月 ~ 3 days after new ≈ ~40°.
+const LUNAR_PHASE_TARGETS = { '新月': 0, '三日月': 40, '上弦の月': 90, '上弦': 90, '満月': 180, '下弦の月': 270, '下弦': 270 };
+
 const searchInput = document.getElementById('searchInput');
 const dl = document.getElementById('constList');
 for (const n in registry) { const o = document.createElement('option'); o.value = n; dl.appendChild(o); }
+for (const k of ['新月', '三日月', '上弦の月', '満月', '下弦の月']) {
+  const o = document.createElement('option'); o.value = k; dl.appendChild(o);
+}
 function doSearch() {
   const q = searchInput.value.trim();
   if (!q) { clearFocus(); return; }
+  if (LUNAR_PHASE_TARGETS[q] !== undefined) {
+    const jd = nextLunarPhase(julianDay(simTime), LUNAR_PHASE_TARGETS[q]);
+    if (jd != null) {
+      simTime = jdToDate(jd);
+      syncInputsFromSim();
+      earth.rotation.y = gmstDeg(jd) * Math.PI / 180; // re-orient now so focus aims correctly
+      earth.updateMatrixWorld(true);                    // propagate to observerRig
+      updateBodies(jd);                                 // position the Moon for the new date
+    }
+    focusOn('月'); // then aim at it
+    return;
+  }
   const hit = searchMatch(q, Object.keys(registry));
   if (hit) focusOn(hit);
 }
@@ -1317,9 +1413,9 @@ function tick() {
     const jd = julianDay(simTime);
     earth.rotation.y = gmstDeg(jd) * Math.PI / 180; // Greenwich sidereal angle
     updateBodies(jd);
-    updateClockUI();
+    updateClockUI(jd);
   }
-  if (playing && view === 'solar') for (const pl of planets) { pl.angle += pl.rel * 0.012; pl.mesh.position.set(Math.cos(pl.angle)*pl.orbit, 0, Math.sin(pl.angle)*pl.orbit); }
+  if (playing && view === 'solar') for (const pl of planets) { pl.angle += pl.rel * speed * 0.04; pl.mesh.position.set(Math.cos(pl.angle)*pl.orbit, 0, Math.sin(pl.angle)*pl.orbit); }
 
   // smoothly steer the view toward a searched constellation
   if (focusing === 'space') {

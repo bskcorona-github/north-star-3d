@@ -305,8 +305,9 @@ const toDeg = (r) => r / RAD;
 export const norm360 = (d) => ((d % 360) + 360) % 360;
 export const norm24 = (h) => ((h % 24) + 24) % 24;
 
-// Julian Day from a JS Date (uses its absolute UTC instant).
+// Julian Day from a JS Date (uses its absolute UTC instant) and back.
 export function julianDay(date) { return date.getTime() / 86400000 + 2440587.5; }
+export function jdToDate(jd) { return new Date((jd - 2440587.5) * 86400000); }
 export function centuriesSinceJ2000(jd) { return (jd - 2451545.0) / 36525; }
 
 // Greenwich Mean Sidereal Time (degrees, 0–360).
@@ -430,6 +431,42 @@ export function moonPhase(jd) {
   const T = centuriesSinceJ2000(jd);
   const D = norm360(297.8501921 + 445267.1114034 * T); // mean elongation Sun–Moon
   return { elongationDeg: D, illuminated: (1 - Math.cos(toRad(D))) / 2 };
+}
+
+// Find the next Julian Day after `jdStart` at which the Sun-Moon elongation
+// hits `targetDeg`: 0 = new moon, 90 = first quarter, 180 = full, 270 = last.
+// Scans in half-day steps then bisects to ~minute precision.
+export function nextLunarPhase(jdStart, targetDeg) {
+  const diff = (jd) => ((moonPhase(jd).elongationDeg - targetDeg + 540) % 360) - 180;
+  const STEP = 0.5;
+  let prevJd = jdStart, prevD = diff(jdStart);
+  for (let i = 1; i <= 80; i++) { // up to 40 days (synodic month ~29.5)
+    const jd = jdStart + i * STEP;
+    const d = diff(jd);
+    if (prevD < 0 && d >= 0) {
+      let lo = prevJd, hi = jd;
+      for (let k = 0; k < 30; k++) {
+        const mid = (lo + hi) / 2;
+        if (diff(mid) < 0) lo = mid; else hi = mid;
+      }
+      return (lo + hi) / 2;
+    }
+    prevJd = jd; prevD = d;
+  }
+  return null;
+}
+
+// Pretty emoji + label for the current moon phase.
+export function moonPhaseLabel(jd) {
+  const D = moonPhase(jd).elongationDeg;
+  if (D < 22.5 || D >= 337.5) return { emoji: '🌑', name: '新月' };
+  if (D < 67.5)  return { emoji: '🌒', name: '三日月' };
+  if (D < 112.5) return { emoji: '🌓', name: '上弦の月' };
+  if (D < 157.5) return { emoji: '🌔', name: '十三夜月' };
+  if (D < 202.5) return { emoji: '🌕', name: '満月' };
+  if (D < 247.5) return { emoji: '🌖', name: '十六夜' };
+  if (D < 292.5) return { emoji: '🌗', name: '下弦の月' };
+  return { emoji: '🌘', name: '有明月' };
 }
 
 // Convenience: all sky bodies (Sun, Moon, naked-eye + outer planets) for a date.

@@ -5,8 +5,9 @@ import {
   poleAltitude, isCircumpolar, belowHorizon, observerNorth, aimYawPitch, shortestAngle,
   keplerRelSpeed, orbitDisplayRadius, planetXZ, yearSeconds, speedupFactor,
   umiStars, umiNames, umiLinks, circumpolarConstellations, skyConstellations, triangles, planetDefs,
-  julianDay, centuriesSinceJ2000, gmstDeg, lstDeg, norm360, norm24,
-  eclipticToEquatorial, sunEqu, moonEqu, planetEqu, moonPhase, bodyEqu, MIYAKO, SKY_BODIES
+  julianDay, jdToDate, centuriesSinceJ2000, gmstDeg, lstDeg, norm360, norm24,
+  eclipticToEquatorial, sunEqu, moonEqu, planetEqu, moonPhase, moonPhaseLabel, nextLunarPhase,
+  bodyEqu, MIYAKO, SKY_BODIES
 } from './astro.js';
 
 const close = (a, b, eps = 1e-9) => assert.ok(Math.abs(a - b) <= eps, `${a} ≈ ${b} (±${eps})`);
@@ -438,4 +439,46 @@ test('MIYAKO location is configured (24.74°N, 125.28°E)', () => {
 test('SKY_BODIES: includes Sun, Moon, and Jupiter', () => {
   const keys = SKY_BODIES.map((b) => b.key);
   for (const k of ['Sun', 'Moon', 'Jupiter']) assert.ok(keys.includes(k), `missing ${k}`);
+});
+
+// ---------------------------------------------------------------------------
+// Lunar phase finding
+// ---------------------------------------------------------------------------
+test('jdToDate is the inverse of julianDay', () => {
+  const d = new Date(Date.UTC(2026, 4, 28, 12, 34, 56));
+  close(jdToDate(julianDay(d)).getTime(), d.getTime(), 2);
+});
+
+test('nextLunarPhase: next new moon is within 30 days', () => {
+  const start = julianDay(new Date(Date.UTC(2026, 4, 1)));
+  const jd = nextLunarPhase(start, 0);
+  assert.ok(jd !== null, 'should find a new moon');
+  assert.ok(jd > start && jd - start < 30, `next new moon ${jd - start} days out`);
+});
+
+test('nextLunarPhase: at the returned jd, elongation ≈ target (±0.05°)', () => {
+  const start = julianDay(new Date(Date.UTC(2026, 4, 1)));
+  for (const target of [0, 90, 180, 270]) {
+    const jd = nextLunarPhase(start, target);
+    const e = moonPhase(jd).elongationDeg;
+    const d = Math.abs(((e - target + 540) % 360) - 180);
+    assert.ok(d < 0.05, `target ${target}: actual ${e} (diff ${d})`);
+  }
+});
+
+test('nextLunarPhase: full moon comes ~14.8 days after new moon', () => {
+  const start = julianDay(new Date(Date.UTC(2026, 0, 1)));
+  const newMoon = nextLunarPhase(start, 0);
+  const fullMoon = nextLunarPhase(newMoon, 180);
+  const gap = fullMoon - newMoon;
+  assert.ok(gap > 13 && gap < 17, `new->full gap ${gap} days`);
+});
+
+test('moonPhaseLabel: 0° -> 🌑 新月, 180° -> 🌕 満月', () => {
+  // Force a moment near new moon, then near full
+  const start = julianDay(new Date(Date.UTC(2026, 0, 1)));
+  const newJd = nextLunarPhase(start, 0);
+  const fullJd = nextLunarPhase(newJd, 180);
+  assert.equal(moonPhaseLabel(newJd).name, '新月');
+  assert.equal(moonPhaseLabel(fullJd).name, '満月');
 });
