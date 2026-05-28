@@ -4,7 +4,7 @@
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
 <meta name="theme-color" content="#05060d" />
-<title>北極星はなぜ動かない？ 3Dデモ</title>
+<title>宮古島の星空シミュレータ</title>
 <style>
   :root { color-scheme: dark; }
   * { box-sizing: border-box; }
@@ -942,6 +942,69 @@ for (let i = 1; i <= 5; i++) {
   trailGroup.add(circle);
 }
 
+// ---- ISS (International Space Station) ----
+// A small visible satellite orbiting Earth at the real altitude/inclination/
+// period. Lives under earthGroup so the orbit tilts with the 地軸 toggle but
+// does NOT spin with the Earth (sibling of `earth`).
+const ISS_R   = 1.75;                   // Earth radius (1.6) + visible altitude
+const ISS_INC = 51.6 * Math.PI / 180;   // real ISS orbital inclination
+const ISS_PERIOD_SEC = 90 * 60;         // ~90 min real time per orbit
+
+const issGroup = new THREE.Group();
+earthGroup.add(issGroup);
+
+const issBody = new THREE.Group();
+issGroup.add(issBody);
+// main module
+issBody.add(new THREE.Mesh(
+  new THREE.BoxGeometry(0.05, 0.03, 0.09),
+  new THREE.MeshStandardMaterial({ color: 0xe8eaef, roughness: 0.55, metalness: 0.35 })
+));
+// solar panels (one big winged pair to read instantly)
+const panelMat = new THREE.MeshStandardMaterial({ color: 0x223a88, emissive: 0x081024, roughness: 0.35, metalness: 0.2, side: THREE.DoubleSide });
+const panelL = new THREE.Mesh(new THREE.BoxGeometry(0.28, 0.006, 0.09), panelMat); panelL.position.x = -0.18; issBody.add(panelL);
+const panelR = new THREE.Mesh(new THREE.BoxGeometry(0.28, 0.006, 0.09), panelMat); panelR.position.x =  0.18; issBody.add(panelR);
+// blinking red nav light
+const issLight = new THREE.Mesh(new THREE.SphereGeometry(0.014, 8, 8), new THREE.MeshBasicMaterial({ color: 0xff4444 }));
+issLight.position.set(0, 0.020, 0.05);
+issBody.add(issLight);
+
+// faint orbit ring
+{
+  const pts = [];
+  for (let a = 0; a <= 128; a++) {
+    const t = a / 128 * Math.PI * 2;
+    pts.push(new THREE.Vector3(
+      ISS_R * Math.cos(t),
+      -ISS_R * Math.sin(t) * Math.sin(ISS_INC),
+       ISS_R * Math.sin(t) * Math.cos(ISS_INC)
+    ));
+  }
+  issGroup.add(new THREE.Line(
+    new THREE.BufferGeometry().setFromPoints(pts),
+    new THREE.LineBasicMaterial({ color: 0x6090ff, transparent: true, opacity: 0.18 })
+  ));
+}
+
+const issLabel = makeLabel('🛰 ISS', '');
+issLabel.style.color = '#9adfff';
+issLabel.style.fontSize = '11px';
+
+const _issFwd = new THREE.Vector3(), _issUp = new THREE.Vector3(), _issRight = new THREE.Vector3(), _issMat = new THREE.Matrix4();
+function updateISS(jd) {
+  const θ = ((jd - 2451545.0) * 86400 / ISS_PERIOD_SEC) * Math.PI * 2;
+  const c = Math.cos(θ), s = Math.sin(θ), si = Math.sin(ISS_INC), ci = Math.cos(ISS_INC);
+  issBody.position.set(ISS_R * c, -ISS_R * s * si, ISS_R * s * ci);
+  // orient body along velocity vector (so panels span across the flight path)
+  _issFwd.set(-s, -c * si, c * ci).normalize();
+  _issUp.copy(issBody.position).normalize();
+  _issRight.crossVectors(_issUp, _issFwd).normalize();
+  _issUp.crossVectors(_issFwd, _issRight); // re-orthogonalise
+  _issMat.makeBasis(_issRight, _issUp, _issFwd.negate());
+  issBody.quaternion.setFromRotationMatrix(_issMat);
+  issLight.visible = (performance.now() / 220 | 0) % 2 === 0; // blink
+}
+
 // ---- Ursa Minor (こぐま座 / Little Dipper) ----
 // Real stars placed by RA/Dec. Polaris is the handle tip, right on the pole, so
 // it barely moves; the bowl (Kochab/Pherkad, ~15-18° from the pole) swings in
@@ -1553,7 +1616,9 @@ function tick() {
     earth.rotation.y = gmstDeg(jd) * Math.PI / 180; // Greenwich sidereal angle
     updateBodies(jd);
     updateClockUI(jd);
+    if (view === 'space') updateISS(jd);
   }
+  issGroup.visible = (view === 'space');
   if (playing && view === 'solar') for (const pl of planets) { pl.angle += pl.rel * speed * 0.04; pl.mesh.position.set(Math.cos(pl.angle)*pl.orbit, 0, Math.sin(pl.angle)*pl.orbit); }
 
   // smoothly steer the view toward a searched constellation
@@ -1606,6 +1671,8 @@ function tick() {
     for (const L of triLabels) L.el.style.opacity = '0';
   }
   for (const s of skyBodies) { bodiesGroup.localToWorld(tmp.copy(s.local)); projectLabel(s.el, tmp); }
+  if (view === 'space') { issBody.getWorldPosition(tmp); projectLabel(issLabel, tmp); }
+  else issLabel.style.opacity = '0';
   if (view === 'japan') {
     for (const c of compassLabels) { observerRig.localToWorld(tmp.copy(c.local)); projectLabel(c.el, tmp); }
   } else {
