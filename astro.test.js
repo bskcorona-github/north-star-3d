@@ -7,7 +7,9 @@ import {
   umiStars, umiNames, umiLinks, circumpolarConstellations, skyConstellations, triangles, planetDefs,
   julianDay, jdToDate, centuriesSinceJ2000, gmstDeg, lstDeg, norm360, norm24,
   eclipticToEquatorial, sunEqu, moonEqu, planetEqu, moonPhase, moonPhaseLabel, nextLunarPhase,
-  bodyEqu, helio, bodyEquFrom, MIYAKO, SKY_BODIES
+  bodyEqu, helio, bodyEquFrom, MIYAKO, SKY_BODIES,
+  sunEclipticLon, solarTerm, nextSolarTerm, SOLAR_TERMS, moonAge,
+  precessionPoleDirJ2000, eclipticPoleDirJ2000
 } from './astro.js';
 
 const close = (a, b, eps = 1e-9) => assert.ok(Math.abs(a - b) <= eps, `${a} ≈ ${b} (±${eps})`);
@@ -604,4 +606,119 @@ test('helio: outer planets follow expected distance ordering at a sample date', 
   for (let i = 1; i < dists.length; i++) {
     assert.ok(dists[i] > dists[i - 1], `planet ${i} should be farther: ${dists.join(', ')}`);
   }
+});
+
+// ---------------------------------------------------------------------------
+// 二十四節気 / 月齢 / 歳差
+// ---------------------------------------------------------------------------
+test('sunEclipticLon: ≈0° at the vernal equinox (~Mar 20 UTC)', () => {
+  // 2026 vernal equinox is around 2026-03-20 14:46 UTC; we just need within ~1°
+  const jd = julianDay(new Date(Date.UTC(2026, 2, 20, 14, 46)));
+  const lon = sunEclipticLon(jd);
+  // Either close to 0° or close to 360° (since longitude wraps).
+  const distFromZero = Math.min(lon, 360 - lon);
+  assert.ok(distFromZero < 1.5, `sun ecliptic lon was ${lon.toFixed(3)}°, expected ≈0°`);
+});
+
+test('sunEclipticLon: ≈90° at the summer solstice (~Jun 21 UTC)', () => {
+  const jd = julianDay(new Date(Date.UTC(2026, 5, 21, 9, 0)));
+  const lon = sunEclipticLon(jd);
+  assert.ok(Math.abs(lon - 90) < 1.5, `sun ecliptic lon was ${lon.toFixed(3)}°, expected ≈90°`);
+});
+
+test('SOLAR_TERMS: has exactly 24 entries with longitudes 0°,15°,…,345°', () => {
+  assert.strictEqual(SOLAR_TERMS.length, 24);
+  const lons = SOLAR_TERMS.map((t) => t.lon).sort((a, b) => a - b);
+  for (let i = 0; i < 24; i++) assert.strictEqual(lons[i], i * 15, `lon[${i}] should be ${i*15}°`);
+});
+
+test('SOLAR_TERMS: 春分=0°, 夏至=90°, 秋分=180°, 冬至=270°', () => {
+  const byName = Object.fromEntries(SOLAR_TERMS.map((t) => [t.name, t.lon]));
+  assert.strictEqual(byName['春分'], 0);
+  assert.strictEqual(byName['夏至'], 90);
+  assert.strictEqual(byName['秋分'], 180);
+  assert.strictEqual(byName['冬至'], 270);
+});
+
+test('solarTerm: in early February (~立春)', () => {
+  const jd = julianDay(new Date(Date.UTC(2026, 1, 5, 0, 0)));
+  const t = solarTerm(jd);
+  assert.strictEqual(t.current.name, '立春');
+});
+
+test('solarTerm: late June is 夏至 segment', () => {
+  const jd = julianDay(new Date(Date.UTC(2026, 5, 25, 0, 0)));
+  const t = solarTerm(jd);
+  assert.strictEqual(t.current.name, '夏至');
+});
+
+test('solarTerm: daysToNext is positive and ≤ ~16 days', () => {
+  const jd = julianDay(new Date(Date.UTC(2026, 5, 25, 0, 0)));
+  const t = solarTerm(jd);
+  assert.ok(t.daysToNext > 0 && t.daysToNext < 16, `daysToNext=${t.daysToNext}`);
+});
+
+test('nextSolarTerm: returns a JD where sunEclipticLon matches target', () => {
+  const start = julianDay(new Date(Date.UTC(2026, 0, 1)));
+  const jdEq = nextSolarTerm(start, 0); // next vernal equinox
+  const lon = sunEclipticLon(jdEq);
+  const dist = Math.min(lon, 360 - lon);
+  assert.ok(dist < 0.05, `expected lon≈0° at next equinox, got ${lon.toFixed(4)}°`);
+});
+
+test('moonAge: at a known full moon, age is roughly half a synodic month', () => {
+  // 2026 has a full moon around May 31 / Jun 1; nearby age should be ~14–16 days.
+  const jd = julianDay(new Date(Date.UTC(2026, 4, 31, 12, 0)));
+  const age = moonAge(jd);
+  assert.ok(age >= 13 && age <= 17, `moonAge near full moon was ${age}, expected 13–17`);
+});
+
+test('moonAge: never exceeds the synodic month (~29.53 days)', () => {
+  for (let m = 0; m < 12; m++) {
+    const jd = julianDay(new Date(Date.UTC(2026, m, 15)));
+    const age = moonAge(jd);
+    assert.ok(age >= 0 && age < 30, `moonAge=${age} out of range for month ${m+1}`);
+  }
+});
+
+test('precessionPoleDirJ2000: at J2000 returns the +Y pole', () => {
+  const jd = 2451545.0; // J2000 exactly
+  const p = precessionPoleDirJ2000(jd);
+  assert.ok(Math.abs(p.x) < 1e-9, `x=${p.x}`);
+  assert.ok(Math.abs(p.y - 1) < 1e-9, `y=${p.y}`);
+  assert.ok(Math.abs(p.z) < 1e-9, `z=${p.z}`);
+});
+
+test('precessionPoleDirJ2000: stays on the unit sphere over millennia', () => {
+  for (const yr of [-3000, -1000, 1000, 5000, 10000, 13000]) {
+    const jd = 2451545.0 + yr * 365.25;
+    const p = precessionPoleDirJ2000(jd);
+    const len = Math.hypot(p.x, p.y, p.z);
+    assert.ok(Math.abs(len - 1) < 1e-9, `|p| at year ${yr} was ${len}`);
+  }
+});
+
+test('precessionPoleDirJ2000: angle from ecliptic pole stays ≈ ε (23.44°)', () => {
+  const ecl = eclipticPoleDirJ2000();
+  const eps = 23.4393 * Math.PI / 180;
+  for (const yr of [-5000, -2000, 0, 4000, 12000]) {
+    const jd = 2451545.0 + yr * 365.25;
+    const p = precessionPoleDirJ2000(jd);
+    const dot = p.x * ecl.x + p.y * ecl.y + p.z * ecl.z;
+    const ang = Math.acos(Math.max(-1, Math.min(1, dot)));
+    assert.ok(Math.abs(ang - eps) < 1e-3, `angle ${ang} ≠ ε at year ${yr}`);
+  }
+});
+
+test('precessionPoleDirJ2000: completes ~25,772-year cycle (returns near +Y)', () => {
+  const period = 25772;
+  const p = precessionPoleDirJ2000(2451545.0 + period * 365.25);
+  assert.ok(Math.abs(p.y - 1) < 1e-3, `y after one cycle was ${p.y}`);
+});
+
+test('eclipticPoleDirJ2000: makes angle ε with the celestial pole (+Y)', () => {
+  const ecl = eclipticPoleDirJ2000();
+  const dot = ecl.y; // (0,1,0)·ecl
+  const ang = Math.acos(dot) * 180 / Math.PI;
+  assert.ok(Math.abs(ang - 23.4393) < 1e-3, `angle was ${ang}°, expected ≈23.44°`);
 });

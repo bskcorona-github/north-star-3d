@@ -529,3 +529,144 @@ export function bodyEquFrom(targetKey, jd, observerKey = 'Earth') {
     dist: Math.hypot(dx, dy, dz)
   };
 }
+
+// ---------------------------------------------------------------------------
+// 二十四節気 (24 solar terms) & 月齢 (moon age)
+// ---------------------------------------------------------------------------
+
+// Geocentric ecliptic longitude of the Sun (degrees, 0–360). 0° = vernal equinox.
+export function sunEclipticLon(jd) {
+  const T = centuriesSinceJ2000(jd);
+  const e = helioEcl(ELEMENTS.Earth, T);
+  return norm360(toDeg(Math.atan2(-e.y, -e.x)));
+}
+
+// 24 solar terms — each at a sun-ecliptic-longitude multiple of 15°. The cycle
+// starts at 立春 (lon=315°) by Chinese-Japanese convention; ordering here uses
+// the modern Japanese listing that begins with 立春 in early February.
+export const SOLAR_TERMS = [
+  { lon: 315, name: '立春',   season: '春' }, { lon: 330, name: '雨水',   season: '春' },
+  { lon: 345, name: '啓蟄',   season: '春' }, { lon:   0, name: '春分',   season: '春' },
+  { lon:  15, name: '清明',   season: '春' }, { lon:  30, name: '穀雨',   season: '春' },
+  { lon:  45, name: '立夏',   season: '夏' }, { lon:  60, name: '小満',   season: '夏' },
+  { lon:  75, name: '芒種',   season: '夏' }, { lon:  90, name: '夏至',   season: '夏' },
+  { lon: 105, name: '小暑',   season: '夏' }, { lon: 120, name: '大暑',   season: '夏' },
+  { lon: 135, name: '立秋',   season: '秋' }, { lon: 150, name: '処暑',   season: '秋' },
+  { lon: 165, name: '白露',   season: '秋' }, { lon: 180, name: '秋分',   season: '秋' },
+  { lon: 195, name: '寒露',   season: '秋' }, { lon: 210, name: '霜降',   season: '秋' },
+  { lon: 225, name: '立冬',   season: '冬' }, { lon: 240, name: '小雪',   season: '冬' },
+  { lon: 255, name: '大雪',   season: '冬' }, { lon: 270, name: '冬至',   season: '冬' },
+  { lon: 285, name: '小寒',   season: '冬' }, { lon: 300, name: '大寒',   season: '冬' }
+];
+
+// Find the JD when the Sun first reaches `targetLonDeg` at or after jdStart.
+// Half-day scan + bisection — good to ~1 minute for the 24 solar terms.
+export function nextSolarTerm(jdStart, targetLonDeg) {
+  const diff = (jd) => ((sunEclipticLon(jd) - targetLonDeg + 540) % 360) - 180;
+  const STEP = 0.5;
+  let prevJd = jdStart, prevD = diff(jdStart);
+  for (let i = 1; i <= 800; i++) { // up to 400 days (full annual cycle + buffer)
+    const jd = jdStart + i * STEP;
+    const d = diff(jd);
+    if (prevD < 0 && d >= 0) {
+      let lo = prevJd, hi = jd;
+      for (let k = 0; k < 30; k++) {
+        const mid = (lo + hi) / 2;
+        if (diff(mid) < 0) lo = mid; else hi = mid;
+      }
+      return (lo + hi) / 2;
+    }
+    prevJd = jd; prevD = d;
+  }
+  return null;
+}
+
+// Identify the current 二十四節気 segment and the next term. Returns
+// { current: { name, lon, season }, next: { name, lon, season }, daysToNext }.
+export function solarTerm(jd) {
+  const lon = sunEclipticLon(jd);
+  // Find the term whose lon is the largest <= lon (cyclically, anchored at 立春=315).
+  // Cycle starts at 315 (立春). Compute "cycle position" t = (lon - 315 + 360) % 360,
+  // then the current term index is floor(t / 15) and the next is +1 mod 24.
+  const t = ((lon - 315) % 360 + 360) % 360;
+  const idx = Math.floor(t / 15) % 24;
+  const current = SOLAR_TERMS[idx];
+  const next = SOLAR_TERMS[(idx + 1) % 24];
+  const nextJd = nextSolarTerm(jd, next.lon);
+  return { current, next, daysToNext: nextJd != null ? nextJd - jd : null };
+}
+
+// Days since the most recent new moon (0 = exactly new, up to ~29.53).
+export function moonAge(jd) {
+  // Walk backwards until we cross a new moon. The synodic month is ~29.53 days;
+  // step in 0.5-day increments looking for the sign change of (elongation - 180)
+  // (we use the wrapped diff so that 0° is "new" but lies between values around 360 and 0).
+  const D = (j) => moonPhase(j).elongationDeg; // 0..360
+  // We define "new" as crossing from ~360 back to ~0 going forward, so going
+  // backwards we're looking for the most recent J where D(J) wraps. Use a
+  // monotone "phase angle" instead: subtract a steady linear drift so it's
+  // strictly monotone, then bisect.
+  // Simpler: scan back ≤32 days in half-day steps to find a crossing.
+  let prevJ = jd, prevD = D(jd);
+  for (let i = 1; i <= 66; i++) {
+    const j = jd - i * 0.5;
+    const d = D(j);
+    // detect descending crossing from <22.5° down through 0/360 wrap up to >337.5°
+    if (prevD < 180 && d > 180 && (prevD + (360 - d)) < 60) {
+      // crossing somewhere in (j, prevJ); bisect on "(D + 180) mod 360 - 180" → near zero
+      const wrap = (x) => ((x + 180) % 360 + 360) % 360 - 180;
+      let lo = j, hi = prevJ;
+      for (let k = 0; k < 30; k++) {
+        const mid = (lo + hi) / 2;
+        if (wrap(D(mid)) < 0) hi = mid; else lo = mid;
+      }
+      return jd - (lo + hi) / 2;
+    }
+    prevJ = j; prevD = d;
+  }
+  return null;
+}
+
+// ---------------------------------------------------------------------------
+// 歳差運動 (Precession of the equinoxes)
+// ---------------------------------------------------------------------------
+
+// Direction of the celestial pole at epoch `jd`, expressed as a unit vector
+// in the J2000 equatorial frame our scene uses (raDecToXYZ convention: +Y = pole).
+// The pole drifts along a small circle of radius ε ≈ 23.44° around the ecliptic
+// pole, completing one revolution in ≈ 25,772 years.
+export function precessionPoleDirJ2000(jd) {
+  const T = (jd - 2451545.0) / 365.25; // years from J2000
+  const period = 25772;
+  const omega = 2 * Math.PI * T / period; // precession angle so far
+  const eps = obliquityRad(2451545.0);    // use the J2000 obliquity for the small circle
+  // The ecliptic pole in equatorial J2000 XYZ (our raDecToXYZ convention) sits at
+  // RA = 18h (= 270° in our +X-cos / +Z-sin layout), Dec = 90° - ε. Plugging in:
+  //   x = cos(Dec)cos(RA) = 0,  y = sin(Dec) = cos(ε),  z = cos(Dec)sin(RA) = -sin(ε)
+  const cosE = Math.cos(eps), sinE = Math.sin(eps);
+  const eclP = { x: 0, y: cosE, z: -sinE };
+  // J2000 celestial pole = (0, 1, 0). Decompose into a parallel-to-eclP component +
+  // a perpendicular part, then rotate the perpendicular part by ω around eclP.
+  const dot = 1 * cosE; // (0,1,0) · eclP = cos(ε)
+  // Perpendicular (lies in the plane through ecliptic pole tangent to the pole circle):
+  const px = 0 - dot * eclP.x;
+  const py = 1 - dot * eclP.y;
+  const pz = 0 - dot * eclP.z;
+  // A second basis vector in the small-circle plane: eclP × perp
+  const bx = eclP.y * pz - eclP.z * py;
+  const by = eclP.z * px - eclP.x * pz;
+  const bz = eclP.x * py - eclP.y * px;
+  const cosO = Math.cos(omega), sinO = Math.sin(omega);
+  return {
+    x: dot * eclP.x + px * cosO + bx * sinO,
+    y: dot * eclP.y + py * cosO + by * sinO,
+    z: dot * eclP.z + pz * cosO + bz * sinO
+  };
+}
+
+// Direction of the ecliptic pole in our J2000 equatorial frame (used to draw
+// the precession circle as a small circle of radius ε around this pole).
+export function eclipticPoleDirJ2000() {
+  const eps = obliquityRad(2451545.0);
+  return { x: 0, y: Math.cos(eps), z: -Math.sin(eps) };
+}
