@@ -105,8 +105,8 @@
 <div id="app"></div>
 <button id="panelToggle" aria-label="メニュー">☰</button>
 <div id="ui"
-  <h1>🌟 北極星はなぜ動かない？</h1>
-  <p class="sub">地球の自転軸（こま回しと同じ軸）の延長線上に、ほぼ北極星があります。地球がいくら回っても、軸の真上にある北極星だけは動いて見えません。</p>
+  <h1>🌌 宮古島の星空シミュレータ</h1>
+  <p class="sub">日付・時刻を指定して、その瞬間の宮古島の空を再現します。星座・惑星・月相を検索でジャンプ。</p>
   <div class="seg">
     <button id="viewSpace" class="segbtn on">🛰 宇宙</button>
     <button id="viewJapan" class="segbtn">🗾 日本</button>
@@ -117,7 +117,7 @@
     <button id="searchClear" title="ハイライト解除">✕</button>
   </div>
   <datalist id="constList"></datalist>
-  <div class="clock" id="clockText">📍 宮古島</div>
+  <div class="clock" id="clockText" title="宮古島 24.74°N, 125.28°E">📍 宮古島</div>
   <div class="datetime">
     <input type="date" id="dateInput" aria-label="日付" />
     <input type="time" id="timeInput" aria-label="時刻" />
@@ -126,7 +126,7 @@
   <button id="play">⏸ 一時停止</button>
   <div class="row">
     <label for="speed">時間の速さ</label>
-    <input id="speed" type="range" min="0" max="100" value="10" aria-label="時間の速さ" />
+    <input id="speed" type="range" min="0" max="100" value="5" aria-label="時間の速さ" />
   </div>
   <div class="row">
     <label>自転軸を表示</label>
@@ -164,7 +164,7 @@
     <label>地面（日本視点）</label>
     <button class="toggle on" id="groundBtn">ON</button>
   </div>
-  <div class="note">💡 黄色い星が北極星（ポラリス）＝こぐま座のしっぽの先。軸のすぐ先なのでほぼ動きません。一方こぐま座の器（コカブ・フェルカド）は極から15〜18°離れているので、再生すると北極星を軸に大きく回ります。</div>
+  <div class="note">💡 検索ボックスに「新月 / 三日月 / 上弦の月 / 満月 / 下弦の月」と入れるとその月相の日時へジャンプ。「月」「木星」「土星」など天体名・星座名でも検索できます。</div>
 </div>
 <div id="hint">🖱 ドラッグ=視点回転 / ホイール=ズーム</div>
 <div id="tip" class="tip"></div>
@@ -797,15 +797,81 @@ function applyObserverLook() {
 }
 applyObserverLook();
 
-// the ground you stand on: a dark lower-hemisphere dome around the observer.
-// Radius (600) sits inside the star sphere (≥700), so every below-horizon star
-// is hidden by the dome from the inside — no matter which way you look.
+// the ground you stand on: a warm-tinted lower-hemisphere dome around the
+// observer (Miyako-jima — tropical sand/grass evening). The dome sits inside
+// the star sphere (≥700), so every below-horizon star is hidden no matter
+// which way you look. A vertex shader fades from sandy at the horizon to
+// near-black at the nadir for a more realistic dusk floor.
 const ground = new THREE.Mesh(
   new THREE.SphereGeometry(600, 48, 24, 0, Math.PI * 2, Math.PI / 2, Math.PI / 2),
-  new THREE.MeshBasicMaterial({ color: 0x05080a, side: THREE.DoubleSide })
+  new THREE.ShaderMaterial({
+    side: THREE.DoubleSide,
+    vertexShader: `
+      varying float vY;
+      void main() { vY = position.y; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }`,
+    fragmentShader: `
+      varying float vY;
+      void main() {
+        float t = clamp(-vY / 600.0, 0.0, 1.0);
+        vec3 horizon = vec3(0.085, 0.072, 0.054); // warm dark sand near the horizon
+        vec3 nadir   = vec3(0.018, 0.020, 0.018); // near-black underfoot
+        gl_FragColor = vec4(mix(horizon, nadir, smoothstep(0.0, 0.45, t)), 1.0);
+      }`
+  })
 );
+
+// Palm-tree silhouettes around the horizon for that Miyako tropical feel.
+function makePalmTexture() {
+  const c = document.createElement('canvas'); c.width = 128; c.height = 256;
+  const g = c.getContext('2d');
+  g.clearRect(0, 0, 128, 256);
+  g.fillStyle = 'rgba(8,10,8,0.95)';
+  // slightly curved trunk
+  g.beginPath();
+  g.moveTo(58, 256); g.bezierCurveTo(68, 190, 50, 140, 62, 95);
+  g.lineTo(70, 95); g.bezierCurveTo(60, 140, 80, 190, 70, 256);
+  g.closePath(); g.fill();
+  // fronds — 9 curving leaves radiating from the crown
+  g.strokeStyle = 'rgba(8,10,8,0.95)';
+  g.lineCap = 'round';
+  const cx = 64, cy = 92;
+  for (let i = 0; i < 9; i++) {
+    const a = -Math.PI / 2 + (i - 4) * 0.38;
+    const len = 42 + ((i * 7) % 11);
+    g.lineWidth = 4;
+    g.beginPath();
+    g.moveTo(cx, cy);
+    g.quadraticCurveTo(
+      cx + Math.cos(a) * len * 0.5, cy + Math.sin(a) * len * 0.5 - 14,
+      cx + Math.cos(a) * len,       cy + Math.sin(a) * len + 6
+    );
+    g.stroke();
+  }
+  const t = new THREE.CanvasTexture(c);
+  t.colorSpace = THREE.SRGBColorSpace;
+  return t;
+}
+const palmGroup = new THREE.Group();
+{
+  const palmTex = makePalmTexture();
+  // Each palm gets its own SpriteMaterial so we can vary size/opacity slightly.
+  const RNG = (i) => ((i * 9301 + 49297) % 233280) / 233280; // tiny deterministic prng
+  const PALM_COUNT = 14;
+  for (let i = 0; i < PALM_COUNT; i++) {
+    const az = (i / PALM_COUNT + (RNG(i) - 0.5) * 0.04) * Math.PI * 2;
+    const r = 380 + RNG(i + 1) * 60;
+    const h = 50 + RNG(i + 2) * 18;          // sprite height
+    const w = h * 0.5;
+    const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: palmTex, transparent: true, depthWrite: false, opacity: 0.92 }));
+    sprite.scale.set(w, h, 1);
+    sprite.position.set(Math.cos(az) * r, h * 0.5, Math.sin(az) * r); // bottom anchored at horizon
+    palmGroup.add(sprite);
+  }
+}
 ground.visible = false;           // only shown in the Japan view
+palmGroup.visible = false;
 observerRig.add(ground);
+observerRig.add(palmGroup);
 
 // ---- Rotation axis line + Polaris ----
 const AXIS_LEN = 700;
@@ -1221,7 +1287,7 @@ function applyTilt() { earthGroup.rotation.z = tiltOn ? TILT : 0; }
 
 // ---- UI wiring ----
 let playing = true;
-let speed = 0.12; // default: matches slider 10 (~36 min sim per real second)
+let speed = 0.06; // default: matches slider 5 (~18 min sim per real second)
 const playBtn = document.getElementById('play');
 playBtn.onclick = () => { playing = !playing; playBtn.textContent = playing ? '⏸ 一時停止' : '▶ 再生'; };
 document.getElementById('speed').oninput = (e) => { speed = e.target.value / 100 * 1.2; };
@@ -1268,7 +1334,7 @@ bindToggle('constBtn', (on) => { constGroup.visible = on; });
 bindToggle('skyBtn', (on) => { skyGroup.visible = on; });
 bindToggle('trailBtn', (on) => { trailGroup.visible = on; });
 bindToggle('tiltBtn', (on) => { tiltOn = on; applyTilt(); });
-bindToggle('groundBtn', (on) => { groundOn = on; ground.visible = on && view === 'japan'; });
+bindToggle('groundBtn', (on) => { groundOn = on; ground.visible = palmGroup.visible = on && view === 'japan'; });
 bindToggle('triBtn', (on) => { triGroup.visible = on; });
 bindToggle('mwBtn', (on) => { milkyWay.visible = on; });
 
@@ -1286,6 +1352,7 @@ function setView(v) {
   activeCamera = japan ? observerCam : camera;
   controls.enabled = !japan;
   ground.visible = japan && groundOn;
+  palmGroup.visible = japan && groundOn;
   // standing on Earth, we shouldn't see our own globe's wireframe at our feet
   earthMesh.visible = !japan; grid.visible = !japan; marker.visible = !japan;
   earthGroup.visible = !solar;     // hides Earth + axis + all constellations
