@@ -97,6 +97,8 @@
     z-index: 5; transition: opacity .2s;
   }
   .label.star { color: #ffe9a8; font-weight: 600; }
+  .label.compass { font-size: 18px; font-weight: 700; letter-spacing: 0.12em;
+    text-shadow: 0 0 8px rgba(0,0,0,0.95), 0 0 2px rgba(0,0,0,1); }
 </style>
 </head>
 <body>
@@ -689,8 +691,8 @@ camera.position.set(6, 3.5, 9);
 const controls = new OrbitControls(camera, renderer.domElement);
 controls.enableDamping = true;
 controls.dampingFactor = 0.06;
-controls.minDistance = 3;
-controls.maxDistance = 60;
+controls.minDistance = 1.8;            // hug the Earth
+controls.maxDistance = 1500;           // free fly out to any planet on the celestial sphere
 
 let activeCamera = camera; // switched between space camera and observer camera
 
@@ -922,6 +924,22 @@ const axisLabel = makeLabel('地球の自転軸', '');
 const umiLabel = makeLabel('こぐま座', '');
 const kochabLabel = makeLabel('コカブ（β）', 'star');
 
+// Cardinal direction labels (Japan view only). observerRig local frame: +X=east,
+// +Y=up, +Z=south, so −Z=north. Distance is arbitrary — labels are HTML overlays.
+const compassDirs = [
+  { name: 'N 北', color: '#ff7a7a', local: new THREE.Vector3(0, 0, -1) },
+  { name: 'E 東', color: '#ffe070', local: new THREE.Vector3(1, 0, 0) },
+  { name: 'S 南', color: '#ffffff', local: new THREE.Vector3(0, 0, 1) },
+  { name: 'W 西', color: '#a4d4ff', local: new THREE.Vector3(-1, 0, 0) }
+];
+const compassLabels = compassDirs.map((d) => {
+  const el = makeLabel(d.name, 'compass');
+  el.style.color = d.color;
+  // y=5 (just above horizon) keeps the label visible even after fp drift in
+  // the world↔local round-trip; also gives a nicer "labels float above horizon" feel.
+  return { el, local: d.local.clone().multiplyScalar(100).setY(5) };
+});
+
 // ---- Other constellations circling the pole ----
 // Real stars (RA hours, Dec deg, magnitude). All sit in the same non-spinning
 // frame, so they wheel around Polaris as the Earth turns.
@@ -1047,30 +1065,63 @@ const bodiesGroup = new THREE.Group();
 axisGroup.add(bodiesGroup);
 const skyBodies = [];
 
-// Moon: shaded by the Sun's direction so the user sees the actual crescent/full phase.
+// Real surface textures (NASA-derived imagery, served via jsDelivr/GitHub).
+const TEX_BASE = 'https://cdn.jsdelivr.net/gh/jeromeetienne/threex.planets@master/images';
+const _texLoader = new THREE.TextureLoader();
+function loadPlanetTex(file) {
+  const t = _texLoader.load(`${TEX_BASE}/${file}`);
+  t.colorSpace = THREE.SRGBColorSpace;
+  return t;
+}
+const planetTex = {
+  Sun:     loadPlanetTex('sunmap.jpg'),
+  Moon:    loadPlanetTex('moonmap1k.jpg'),
+  Mercury: loadPlanetTex('mercurymap.jpg'),
+  Venus:   loadPlanetTex('venusmap.jpg'),
+  Earth:   loadPlanetTex('earthmap1k.jpg'),
+  Mars:    loadPlanetTex('marsmap1k.jpg'),
+  Jupiter: loadPlanetTex('jupitermap.jpg'),
+  Saturn:  loadPlanetTex('saturnmap.jpg'),
+  Uranus:  loadPlanetTex('uranusmap.jpg'),
+  Neptune: loadPlanetTex('neptunemap.jpg'),
+  SaturnRing: loadPlanetTex('saturnringcolor.jpg')
+};
+
+// Moon: shaded by the Sun's direction + lunar surface texture so we see the
+// actual crescent/full phase WITH the maria, not just a blank disc.
 const moonMat = new THREE.ShaderMaterial({
-  uniforms: { sunDir: { value: new THREE.Vector3(1, 0, 0) } },
+  uniforms: {
+    sunDir: { value: new THREE.Vector3(1, 0, 0) },
+    map: { value: planetTex.Moon }
+  },
   vertexShader: `
     varying vec3 vN;
+    varying vec2 vUv;
     void main() {
       vN = normalize(mat3(modelMatrix) * normal);
+      vUv = uv;
       gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
     }`,
   fragmentShader: `
     uniform vec3 sunDir;
+    uniform sampler2D map;
     varying vec3 vN;
+    varying vec2 vUv;
     void main() {
       float l = max(dot(vN, normalize(sunDir)), 0.0);
-      vec3 col = vec3(0.93, 0.94, 0.97) * (0.03 + 0.97 * l);
-      gl_FragColor = vec4(col, 1.0);
+      vec3 tex = texture2D(map, vUv).rgb;
+      gl_FragColor = vec4(tex * (0.03 + 0.97 * l), 1.0);
     }`
 });
 
 for (const b of SKY_BODIES) {
   const lum = b.kind === 'sun' || b.kind === 'moon';
   const size = b.kind === 'sun' ? 17 : b.kind === 'moon' ? 13 : 7;
-  const mat = b.kind === 'moon' ? moonMat : new THREE.MeshBasicMaterial({ color: b.color });
-  const mesh = new THREE.Mesh(new THREE.SphereGeometry(size, 24, 24), mat);
+  let mat;
+  if (b.kind === 'moon') mat = moonMat;
+  else if (planetTex[b.key]) mat = new THREE.MeshBasicMaterial({ map: planetTex[b.key] });
+  else mat = new THREE.MeshBasicMaterial({ color: b.color });
+  const mesh = new THREE.Mesh(new THREE.SphereGeometry(size, 32, 32), mat);
   bodiesGroup.add(mesh);
   let glow = null;
   if (lum) {
@@ -1109,7 +1160,7 @@ const solarGroup = new THREE.Group();
 solarGroup.visible = false;
 scene.add(solarGroup);
 
-const sunMesh = new THREE.Mesh(new THREE.SphereGeometry(1.25, 32, 32), new THREE.MeshBasicMaterial({ color: 0xffd14d }));
+const sunMesh = new THREE.Mesh(new THREE.SphereGeometry(1.25, 48, 48), new THREE.MeshBasicMaterial({ map: planetTex.Sun }));
 solarGroup.add(sunMesh);
 const sunGlow = new THREE.Sprite(new THREE.SpriteMaterial({ map: glowTex, color: 0xffcc44, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false }));
 sunGlow.scale.set(5, 5, 1);
@@ -1123,10 +1174,17 @@ for (const p of planetDefs) {
   const ringPts = [];
   for (let a = 0; a <= 96; a++) { const t = a/96*Math.PI*2; ringPts.push(new THREE.Vector3(Math.cos(t)*p.orbit, 0, Math.sin(t)*p.orbit)); }
   solarGroup.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints(ringPts), new THREE.LineBasicMaterial({ color: 0x335577, transparent: true, opacity: 0.5 })));
-  const mesh = new THREE.Mesh(new THREE.SphereGeometry(p.size, 24, 24), new THREE.MeshStandardMaterial({ color: p.color, roughness: 0.85, metalness: 0.0, emissive: new THREE.Color(p.color).multiplyScalar(0.12) }));
+  const mat = planetTex[p.en]
+    ? new THREE.MeshStandardMaterial({ map: planetTex[p.en], roughness: 0.92, metalness: 0.0 })
+    : new THREE.MeshStandardMaterial({ color: p.color, roughness: 0.85, metalness: 0.0 });
+  const mesh = new THREE.Mesh(new THREE.SphereGeometry(p.size, 32, 32), mat);
   if (p.ring) {
-    const ring = new THREE.Mesh(new THREE.RingGeometry(p.size*1.4, p.size*2.2, 48), new THREE.MeshBasicMaterial({ color: 0xc9b97e, side: THREE.DoubleSide, transparent: true, opacity: 0.7 }));
-    ring.rotation.x = Math.PI/2.2; mesh.add(ring);
+    const ring = new THREE.Mesh(
+      new THREE.RingGeometry(p.size * 1.4, p.size * 2.2, 64),
+      new THREE.MeshBasicMaterial({ map: planetTex.SaturnRing, side: THREE.DoubleSide, transparent: true, opacity: 0.85 })
+    );
+    ring.rotation.x = Math.PI / 2.2;
+    mesh.add(ring);
   }
   solarGroup.add(mesh);
   const angle = Math.random() * Math.PI * 2;
@@ -1147,7 +1205,9 @@ function projectLabel(el, worldPos) {
     el.style.opacity = '0'; return;
   }
   const v = worldPos.clone().project(activeCamera);
-  if (v.z > 1) { el.style.opacity = '0'; return; }
+  // Hide points behind the camera (z > 1) or far off-screen — perspective divide
+  // explodes near the lateral plane and would otherwise place labels at 1e20px.
+  if (v.z > 1 || Math.abs(v.x) > 1.4 || Math.abs(v.y) > 1.4) { el.style.opacity = '0'; return; }
   el.style.opacity = '1';
   el.style.left = ( (v.x*0.5+0.5) * innerWidth ) + 'px';
   el.style.top  = ( (-v.y*0.5+0.5) * innerHeight ) + 'px';
@@ -1340,7 +1400,7 @@ let targetYaw = 0, targetPitch = 0;
 function setDim(dim) {
   for (const n in registry) for (const m of registry[n].mats) m.opacity = dim ? 0.08 : m.userData.base;
 }
-function clearFocus() { setDim(false); focusMark.visible = false; focusing = null; }
+function clearFocus() { setDim(false); focusMark.visible = false; focusing = null; controls.target.set(0, 0, 0); }
 function focusOn(name) {
   const entry = registry[name];
   if (!entry) return;
@@ -1348,15 +1408,26 @@ function focusOn(name) {
   for (const m of entry.mats) m.opacity = 0.95;
   const center = entry.getCenter ? entry.getCenter() : entry.center; // bodies move every frame
   focusMark.position.copy(center);
-  focusMark.visible = true;
+  focusMark.visible = !entry.getCenter; // the body itself is the visible target — no extra ring
   const Cw = axisGroup.localToWorld(center.clone());
   if (view === 'japan') {
     const aim = aimYawPitch(observerRig.worldToLocal(Cw.clone()));
     targetYaw = aim.yaw; targetPitch = aim.pitch;
     focusing = 'japan';
   } else {
-    const r = Math.max(6, camera.position.length());
-    focusCamPos.copy(Cw).normalize().multiplyScalar(-r);
+    if (entry.getCenter) {
+      // A single body (Sun/Moon/planet) — sit between Earth and the body, looking
+      // at it. That keeps the lit, Earth-facing face on screen (so full moon shows
+      // bright, new moon shows dark — same as from the ground).
+      const dist = Cw.length() || 1;
+      focusCamPos.copy(Cw).multiplyScalar((dist - 80) / dist);
+      controls.target.copy(Cw);
+    } else {
+      // A constellation (wide arc of stars) — Earth stays small in the foreground.
+      const r = Math.max(6, camera.position.length());
+      focusCamPos.copy(Cw).normalize().multiplyScalar(-r);
+      controls.target.set(0, 0, 0);
+    }
     focusing = 'space';
   }
 }
@@ -1403,7 +1474,8 @@ document.getElementById('searchClear').onclick = () => { searchInput.value = '';
 const tmp = new THREE.Vector3();
 const allCelestialLabels = () => { polarisLabel.style.opacity='0'; axisLabel.style.opacity='0'; umiLabel.style.opacity='0'; kochabLabel.style.opacity='0';
   for (const L of constLabels) L.el.style.opacity='0'; for (const L of skyLabels) L.el.style.opacity='0'; for (const L of triLabels) L.el.style.opacity='0';
-  for (const s of skyBodies) s.el.style.opacity='0'; };
+  for (const s of skyBodies) s.el.style.opacity='0';
+  for (const c of compassLabels) c.el.style.opacity='0'; };
 function tick() {
   requestAnimationFrame(tick);
   if (view !== 'solar') {
@@ -1467,6 +1539,11 @@ function tick() {
     for (const L of triLabels) L.el.style.opacity = '0';
   }
   for (const s of skyBodies) { bodiesGroup.localToWorld(tmp.copy(s.local)); projectLabel(s.el, tmp); }
+  if (view === 'japan') {
+    for (const c of compassLabels) { observerRig.localToWorld(tmp.copy(c.local)); projectLabel(c.el, tmp); }
+  } else {
+    for (const c of compassLabels) c.el.style.opacity = '0';
+  }
 }
 setView(view); // apply touch-aware hint & initial classes
 tick();
