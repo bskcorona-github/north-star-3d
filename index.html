@@ -1039,9 +1039,9 @@ window.__planetPaths = planetPathsGroup; // temporary debug hook
     { key: 'Saturn',  color: 0xe3d6a6, periodYr: 29.457, opacity: 0.55, r: 0.985 },
     { key: 'Uranus',  color: 0xa9e6e6, periodYr: 84.011, opacity: 0.55, r: 0.985 },
     { key: 'Neptune', color: 0x5878e6, periodYr: 164.79, opacity: 0.55, r: 0.985 },
-    // Moon drawn last in front of everything, pure white so it doesn't blend
-    // with the gold ecliptic / Saturn lines.
-    { key: 'Moon',    color: 0xffffff, periodYr: 27.3217 / 365.25, opacity: 1.0,  r: 0.96 }
+    // Moon drawn last in front of everything; vibrant magenta so it doesn't
+    // blend with either the gold ecliptic/Saturn lines OR the white starfield.
+    { key: 'Moon',    color: 0xff66ff, periodYr: 27.3217 / 365.25, opacity: 1.0,  r: 0.96 }
   ];
   for (const p of defs) {
     const pts = [];
