@@ -9,7 +9,8 @@ import {
   eclipticToEquatorial, sunEqu, moonEqu, planetEqu, moonPhase, moonPhaseLabel, nextLunarPhase,
   bodyEqu, helio, bodyEquFrom, MIYAKO, SKY_BODIES,
   sunEclipticLon, solarTerm, nextSolarTerm, SOLAR_TERMS, moonAge,
-  precessionPoleDirJ2000, eclipticPoleDirJ2000
+  precessionPoleDirJ2000, eclipticPoleDirJ2000,
+  COMETS, cometHelio, cometEqu, APOLLO_SITES, moonSurfacePoint
 } from './astro.js';
 
 const close = (a, b, eps = 1e-9) => assert.ok(Math.abs(a - b) <= eps, `${a} ≈ ${b} (±${eps})`);
@@ -721,4 +722,93 @@ test('eclipticPoleDirJ2000: makes angle ε with the celestial pole (+Y)', () => 
   const dot = ecl.y; // (0,1,0)·ecl
   const ang = Math.acos(dot) * 180 / Math.PI;
   assert.ok(Math.abs(ang - 23.4393) < 1e-3, `angle was ${ang}°, expected ≈23.44°`);
+});
+
+// ---------------------------------------------------------------------------
+// 彗星 (comets)
+// ---------------------------------------------------------------------------
+test('COMETS: ハレー・ヘール・ボップ・NEOWISE all present', () => {
+  const ens = COMETS.map((c) => c.en);
+  assert.ok(ens.includes('1P/Halley'));
+  assert.ok(ens.includes('C/1995 O1'));
+  assert.ok(ens.includes('C/2020 F3'));
+});
+
+test('cometHelio: at the epoch of perihelion, r ≈ perihelion distance a(1-e)', () => {
+  for (const c of COMETS) {
+    const p = cometHelio(c, c.Tperi_jd);
+    const q = c.a * (1 - c.e); // perihelion distance (AU)
+    assert.ok(Math.abs(p.r - q) < 1e-6, `${c.en}: r=${p.r} vs q=${q}`);
+  }
+});
+
+test('cometHelio: Halley at aphelion (T_peri + period/2) is far away', () => {
+  const halley = COMETS.find((c) => c.en === '1P/Halley');
+  const jdAphelion = halley.Tperi_jd + (halley.period * 365.25) / 2;
+  const p = cometHelio(halley, jdAphelion);
+  const Q = halley.a * (1 + halley.e); // aphelion ~35.1 AU
+  assert.ok(Math.abs(p.r - Q) < 0.05, `aphelion r=${p.r}, expected ≈${Q}`);
+});
+
+test('cometHelio: r grows monotonically from perihelion outward (early outbound)', () => {
+  const halley = COMETS.find((c) => c.en === '1P/Halley');
+  let prev = -Infinity;
+  for (let d = 0; d <= 365 * 5; d += 30) { // 0 to 5 years post-perihelion
+    const p = cometHelio(halley, halley.Tperi_jd + d);
+    assert.ok(p.r >= prev - 1e-9, `monotonic at d=${d}: ${p.r} vs ${prev}`);
+    prev = p.r;
+  }
+});
+
+test('cometEqu: Halley near 1986 perihelion has small geocentric distance (<2 AU)', () => {
+  const halley = COMETS.find((c) => c.en === '1P/Halley');
+  const eq = cometEqu(halley, 2446470.95); // 1986-02-09
+  // Halley was about 0.6 AU from Earth at the 1986 perihelion.
+  assert.ok(eq.dist < 2, `Halley geocentric dist ${eq.dist} should be <2 AU near perihelion`);
+});
+
+test('cometEqu: returns sane RA/Dec (RA in [0,24), |Dec|<=90)', () => {
+  for (const c of COMETS) {
+    const eq = cometEqu(c, c.Tperi_jd);
+    assert.ok(eq.ra >= 0 && eq.ra < 24, `${c.en}: RA=${eq.ra}`);
+    assert.ok(eq.dec >= -90 && eq.dec <= 90, `${c.en}: Dec=${eq.dec}`);
+  }
+});
+
+// ---------------------------------------------------------------------------
+// アポロ着陸点
+// ---------------------------------------------------------------------------
+test('APOLLO_SITES: has all 6 crewed landings', () => {
+  assert.strictEqual(APOLLO_SITES.length, 6);
+  const missions = APOLLO_SITES.map((s) => s.mission);
+  for (const m of ['Apollo 11', 'Apollo 12', 'Apollo 14', 'Apollo 15', 'Apollo 16', 'Apollo 17']) {
+    assert.ok(missions.includes(m), `missing ${m}`);
+  }
+});
+
+test('APOLLO_SITES: all latitudes within ±27°, longitudes within ±35°', () => {
+  for (const s of APOLLO_SITES) {
+    assert.ok(Math.abs(s.lat) <= 27, `${s.mission} lat ${s.lat} out of nearside band`);
+    assert.ok(Math.abs(s.lon) <= 35, `${s.mission} lon ${s.lon} out of nearside band`);
+  }
+});
+
+test('moonSurfacePoint: lat=0, lon=0 maps to +X', () => {
+  const v = moonSurfacePoint(0, 0, 5);
+  assert.ok(Math.abs(v.x - 5) < 1e-9, `x=${v.x}`);
+  assert.ok(Math.abs(v.y) < 1e-9, `y=${v.y}`);
+  assert.ok(Math.abs(v.z) < 1e-9, `z=${v.z}`);
+});
+
+test('moonSurfacePoint: lat=+90 maps to +Y', () => {
+  const v = moonSurfacePoint(90, 137, 3);
+  assert.ok(Math.abs(v.y - 3) < 1e-6);
+});
+
+test('moonSurfacePoint: returns unit vectors when R=1', () => {
+  for (const s of APOLLO_SITES) {
+    const v = moonSurfacePoint(s.lat, s.lon, 1);
+    const len = Math.hypot(v.x, v.y, v.z);
+    assert.ok(Math.abs(len - 1) < 1e-9, `${s.mission}: |v|=${len}`);
+  }
 });

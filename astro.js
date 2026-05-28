@@ -670,3 +670,100 @@ export function eclipticPoleDirJ2000() {
   const eps = obliquityRad(2451545.0);
   return { x: 0, y: Math.cos(eps), z: -Math.sin(eps) };
 }
+
+// ---------------------------------------------------------------------------
+// 彗星 (Comets) — Keplerian elements + position from epoch of perihelion
+// ---------------------------------------------------------------------------
+
+// Famous periodic / long-period comets. Elements pulled from JPL/MPC, expressed
+// in heliocentric ecliptic J2000 coordinates. period in years; Tperi_jd is the
+// Julian date of the most recent perihelion passage we have on file.
+export const COMETS = [
+  // 1P/Halley — most famous; last perihelion 1986-02-09, next ≈ 2061-07-28.
+  {
+    name: 'ハレー彗星', en: '1P/Halley',
+    a: 17.834, e: 0.96714, i: 162.26, w: 111.33, O: 58.42,
+    Tperi_jd: 2446470.95, period: 75.32, color: 0x9ff5ff
+  },
+  // C/1995 O1 (Hale-Bopp) — the spectacular 1997 comet; very long period.
+  {
+    name: 'ヘール・ボップ彗星', en: 'C/1995 O1',
+    a: 178.0, e: 0.99513, i: 89.43, w: 130.59, O: 282.47,
+    Tperi_jd: 2450538.14, period: 2533, color: 0xb0e0ff
+  },
+  // C/2020 F3 (NEOWISE) — bright naked-eye comet in July 2020.
+  {
+    name: 'ネオワイズ彗星', en: 'C/2020 F3',
+    a: 358.6, e: 0.99918, i: 128.94, w: 37.28, O: 60.97,
+    Tperi_jd: 2459033.0, period: 6800, color: 0xfff0a0
+  }
+];
+
+// Heliocentric ecliptic XYZ (AU) of a comet at jd, using its Keplerian elements
+// and time-since-perihelion (rather than mean longitude at epoch, since comet
+// elements are normally tabulated relative to T_peri).
+export function cometHelio(c, jd) {
+  const n = 2 * Math.PI / (c.period * 365.25); // mean motion (rad/day)
+  const M = n * (jd - c.Tperi_jd);              // mean anomaly (rad)
+  // Solve M = E − e sin E for E (Kepler's equation), radians.
+  let E = M;
+  for (let k = 0; k < 50; k++) {
+    const dE = (M - E + c.e * Math.sin(E)) / (1 - c.e * Math.cos(E));
+    E += dE;
+    if (Math.abs(dE) < 1e-10) break;
+  }
+  // True anomaly v and distance r (AU)
+  const v = 2 * Math.atan2(
+    Math.sqrt(1 + c.e) * Math.sin(E / 2),
+    Math.sqrt(1 - c.e) * Math.cos(E / 2)
+  );
+  const r = c.a * (1 - c.e * Math.cos(E));
+  // Perifocal frame: x toward perihelion, y in the orbital plane perpendicular.
+  const xp = r * Math.cos(v), yp = r * Math.sin(v);
+  // Rotate to ecliptic by (ω, i, Ω) — the standard composition R_Ω · R_i · R_ω.
+  const w = toRad(c.w), iR = toRad(c.i), O = toRad(c.O);
+  const cw = Math.cos(w), sw = Math.sin(w);
+  const cO = Math.cos(O), sO = Math.sin(O);
+  const ci = Math.cos(iR), si = Math.sin(iR);
+  return {
+    x: (cw * cO - sw * sO * ci) * xp + (-sw * cO - cw * sO * ci) * yp,
+    y: (cw * sO + sw * cO * ci) * xp + (-sw * sO + cw * cO * ci) * yp,
+    z: (sw * si) * xp + (cw * si) * yp,
+    r // heliocentric distance (AU) — useful for visibility / size scaling
+  };
+}
+
+// Geocentric apparent RA/Dec for a comet (plus heliocentric distance & geocentric dist).
+export function cometEqu(c, jd) {
+  const cp = cometHelio(c, jd);
+  const ep = helioEcl(ELEMENTS.Earth, centuriesSinceJ2000(jd));
+  const dx = cp.x - ep.x, dy = cp.y - ep.y, dz = cp.z - ep.z;
+  const dist = Math.hypot(dx, dy, dz);
+  const eq = eclVecToEqu(dx, dy, dz, jd);
+  return { ...eq, dist, helioDist: cp.r };
+}
+
+// ---------------------------------------------------------------------------
+// Apollo lunar landing sites — selenographic latitude/longitude (deg).
+// Convention: +lat = north, +lon = east. Used to draw markers on the Moon.
+// ---------------------------------------------------------------------------
+export const APOLLO_SITES = [
+  { mission: 'Apollo 11', jp: 'アポロ11号 静かの海',     date: '1969-07-20', lat:  0.674, lon:  23.473 },
+  { mission: 'Apollo 12', jp: 'アポロ12号 嵐の大洋',     date: '1969-11-19', lat: -3.012, lon: -23.422 },
+  { mission: 'Apollo 14', jp: 'アポロ14号 フラ・マウロ', date: '1971-02-05', lat: -3.646, lon: -17.473 },
+  { mission: 'Apollo 15', jp: 'アポロ15号 ハドリー谷',   date: '1971-07-30', lat: 26.132, lon:   3.634 },
+  { mission: 'Apollo 16', jp: 'アポロ16号 デカルト高地', date: '1972-04-21', lat: -8.973, lon:  15.501 },
+  { mission: 'Apollo 17', jp: 'アポロ17号 タウルス・リトロー', date: '1972-12-11', lat: 20.190, lon:  30.770 }
+];
+
+// Convert selenographic (lat, lon in degrees) to a unit vector pointing out
+// from the Moon's centre in a frame where +X=Moon's prime-meridian-equator,
+// +Y=Moon's north pole, +Z=90°E equator. (Matches raDecToXYZ-style: lat→Y up.)
+export function moonSurfacePoint(latDeg, lonDeg, R = 1) {
+  const la = toRad(latDeg), lo = toRad(lonDeg);
+  return {
+    x: R * Math.cos(la) * Math.cos(lo),
+    y: R * Math.sin(la),
+    z: R * Math.cos(la) * Math.sin(lo)
+  };
+}
