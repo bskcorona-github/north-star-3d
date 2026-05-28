@@ -59,6 +59,9 @@
     border-radius: 8px; width: 34px; cursor: pointer; font-size: 13px; }
   #searchClear:hover { background: rgba(120,160,255,0.35); }
   .clock { font-size: 12px; color: #ffd86b; margin: 2px 0 6px; font-variant-numeric: tabular-nums; }
+  .event { font-size: 11.5px; color: #ffacd8; margin: 0 0 8px; padding: 4px 8px;
+    background: rgba(120,80,140,0.22); border: 1px solid rgba(255,140,200,0.4); border-radius: 6px;
+    line-height: 1.4; }
   .datetime { display: flex; gap: 6px; margin: 0 0 12px; }
   .datetime input { flex: 1; min-width: 0; background: rgba(8,12,26,0.9); border: 1px solid rgba(120,160,255,0.4);
     color: #eaf0ff; border-radius: 8px; padding: 6px 8px; font-size: 12px; }
@@ -144,6 +147,7 @@
   </div>
   <datalist id="constList"></datalist>
   <div class="clock" id="clockText" title="宮古島 24.74°N, 125.28°E">📍 宮古島</div>
+  <div class="event" id="eventChip" style="display:none"></div>
   <div class="datetime">
     <input type="date" id="dateInput" aria-label="日付" />
     <input type="time" id="timeInput" aria-label="時刻" />
@@ -1110,7 +1114,9 @@ function spawnMeteor() {
 
 function updateMeteors(dt) {
   if (!meteorsGroup.visible) return;
-  if (Math.random() < dt * 0.8) spawnMeteor(); // ~0.8 / sec on average
+  const shower = activeMeteorShower(simTime);
+  const rate = 0.8 + (shower ? shower.intensity * 4 : 0); // boost during showers
+  if (Math.random() < dt * rate) spawnMeteor();
   for (let i = activeMeteors.length - 1; i >= 0; i--) {
     const m = activeMeteors[i];
     m.life += dt;
@@ -1607,9 +1613,49 @@ document.getElementById('nowBtn').onclick = () => {
   syncInputsFromSim();
   if (planetPathsGroup.visible) rebuildPlanetPaths(julianDay(simTime));
 };
+// ---- Annual meteor showers & eclipse detection ----
+const METEOR_SHOWERS = [
+  { name: 'しぶんぎ座流星群',    month: 0,  day: 4,  zhr: 110 },
+  { name: '4月こと座流星群',     month: 3,  day: 22, zhr: 18 },
+  { name: 'みずがめ座η流星群',   month: 4,  day: 6,  zhr: 50 },
+  { name: 'みずがめ座δ流星群',   month: 6,  day: 30, zhr: 25 },
+  { name: 'ペルセウス座流星群',  month: 7,  day: 13, zhr: 100 },
+  { name: 'オリオン座流星群',    month: 9,  day: 21, zhr: 20 },
+  { name: 'しし座流星群',        month: 10, day: 17, zhr: 15 },
+  { name: 'ふたご座流星群',      month: 11, day: 14, zhr: 120 },
+  { name: 'こぐま座流星群',      month: 11, day: 22, zhr: 10 }
+];
+function activeMeteorShower(date) {
+  const y = date.getFullYear();
+  for (const s of METEOR_SHOWERS) {
+    const peak = new Date(y, s.month, s.day);
+    const diff = Math.abs((date - peak) / 86400000);
+    if (diff <= 3) return { name: s.name, intensity: Math.max(0.2, 1 - diff / 3), zhr: s.zhr };
+  }
+  return null;
+}
+function detectEclipse(jd) {
+  const sun = sunEqu(jd), moon = moonEqu(jd);
+  const r1 = sun.ra * Math.PI / 12, d1 = sun.dec * Math.PI / 180;
+  const r2 = moon.ra * Math.PI / 12, d2 = moon.dec * Math.PI / 180;
+  const dot = Math.sin(d1) * Math.sin(d2) + Math.cos(d1) * Math.cos(d2) * Math.cos(r1 - r2);
+  const sep = Math.acos(Math.max(-1, Math.min(1, dot))) * 180 / Math.PI;
+  if (sep < 1.5) return { type: '🌑 日食!', sep };
+  if (Math.abs(sep - 180) < 1.5) return { type: '🌕 月食!', sep: 180 - sep };
+  return null;
+}
+
+const eventChip = document.getElementById('eventChip');
 function updateClockUI(jd) {
   const ph = moonPhaseLabel(jd);
   clockText.textContent = `📍 宮古島  ${simTime.getFullYear()}/${pad(simTime.getMonth() + 1)}/${pad(simTime.getDate())} ${pad(simTime.getHours())}:${pad(simTime.getMinutes())}  ${ph.emoji} ${ph.name}`;
+  const shower = activeMeteorShower(simTime);
+  const ecl = detectEclipse(jd);
+  const parts = [];
+  if (ecl) parts.push(ecl.type);
+  if (shower) parts.push(`☄ ${shower.name}`);
+  eventChip.textContent = parts.join('  ·  ');
+  eventChip.style.display = parts.length ? '' : 'none';
   if (playing && document.activeElement !== dateInput && document.activeElement !== timeInput) syncInputsFromSim();
 }
 syncInputsFromSim();
