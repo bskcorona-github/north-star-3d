@@ -476,6 +476,7 @@ export const SKY_BODIES = [
   { key: 'Moon',    jp: '月',   kind: 'moon',   color: 0xdfe6f0 },
   { key: 'Mercury', jp: '水星', kind: 'planet', color: 0xb0a090 },
   { key: 'Venus',   jp: '金星', kind: 'planet', color: 0xe8d8a0 },
+  { key: 'Earth',   jp: '地球', kind: 'planet', color: 0x4a90e2 },
   { key: 'Mars',    jp: '火星', kind: 'planet', color: 0xd0552f },
   { key: 'Jupiter', jp: '木星', kind: 'planet', color: 0xd9b58a },
   { key: 'Saturn',  jp: '土星', kind: 'planet', color: 0xe3d6a6 },
@@ -487,4 +488,44 @@ export function bodyEqu(key, jd) {
   if (key === 'Sun') return sunEqu(jd);
   if (key === 'Moon') return moonEqu(jd);
   return planetEqu(key, jd);
+}
+
+// Heliocentric ecliptic xyz (AU) for any sky body — used to swap the observer.
+export function helio(key, jd) {
+  const T = centuriesSinceJ2000(jd);
+  if (key === 'Sun') return { x: 0, y: 0, z: 0 };
+  if (key === 'Moon') {
+    const earth = helioEcl(ELEMENTS.Earth, T);
+    const Lp = 218.3164477 + 481267.88123421 * T;
+    const D = toRad(297.8501921 + 445267.1114034 * T);
+    const M = toRad(357.5291092 + 35999.0502909 * T);
+    const Mp = toRad(134.9633964 + 477198.8675055 * T);
+    const F = toRad(93.2720950 + 483202.0175233 * T);
+    const lon = toRad(norm360(Lp + 6.289 * Math.sin(Mp) + 1.274 * Math.sin(2 * D - Mp) + 0.658 * Math.sin(2 * D)
+      + 0.214 * Math.sin(2 * Mp) - 0.186 * Math.sin(M) - 0.114 * Math.sin(2 * F)));
+    const lat = toRad(5.128 * Math.sin(F) + 0.281 * Math.sin(Mp + F) + 0.278 * Math.sin(F - Mp) + 0.173 * Math.sin(2 * D - F));
+    const dist = 0.00257; // ~1 lunar distance in AU
+    return {
+      x: earth.x + dist * Math.cos(lat) * Math.cos(lon),
+      y: earth.y + dist * Math.cos(lat) * Math.sin(lon),
+      z: earth.z + dist * Math.sin(lat)
+    };
+  }
+  return ELEMENTS[key] ? helioEcl(ELEMENTS[key], T) : { x: 0, y: 0, z: 0 };
+}
+
+// Apparent RA/Dec of a target body as seen from an observer body.
+// observerKey === targetKey → null (you can't see your own home).
+export function bodyEquFrom(targetKey, jd, observerKey = 'Earth') {
+  if (targetKey === observerKey) return null;
+  const o = helio(observerKey, jd);
+  const t = helio(targetKey, jd);
+  const e = obliquityRad(jd); const ce = Math.cos(e), se = Math.sin(e);
+  const dx = t.x - o.x, dy = t.y - o.y, dz = t.z - o.z;
+  const xe = dx, ye = dy * ce - dz * se, ze = dy * se + dz * ce;
+  return {
+    ra: norm24(toDeg(Math.atan2(ye, xe)) / 15),
+    dec: toDeg(Math.atan2(ze, Math.hypot(xe, ye))),
+    dist: Math.hypot(dx, dy, dz)
+  };
 }

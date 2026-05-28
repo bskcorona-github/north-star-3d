@@ -97,8 +97,8 @@
     z-index: 5; transition: opacity .2s;
   }
   .label.star { color: #ffe9a8; font-weight: 600; }
-  .solar-only { display: none; }
-  body.is-solar .solar-only { display: flex; }
+  .obs-only { display: flex; }
+  body.is-japan .obs-only { display: none; }
   #solarObserver { flex: 1.2; min-width: 0; background: rgba(8,12,26,0.9); border: 1px solid rgba(120,160,255,0.4);
     color: #eaf0ff; border-radius: 8px; padding: 7px 8px; font-size: 13px; }
   .label.compass { font-size: 18px; font-weight: 700; letter-spacing: 0.12em;
@@ -128,7 +128,7 @@
     <button id="nowBtn" title="現在時刻にする">今</button>
   </div>
   <button id="play">⏸ 一時停止</button>
-  <div class="row solar-only">
+  <div class="row obs-only">
     <label for="solarObserver">観測地点</label>
     <select id="solarObserver" aria-label="観測地点">
       <option value="overview">🛰 太陽系全体</option>
@@ -682,6 +682,7 @@ const SKY_BODIES = [
   { key: 'Moon',    jp: '月',   kind: 'moon',   color: 0xdfe6f0 },
   { key: 'Mercury', jp: '水星', kind: 'planet', color: 0xb0a090 },
   { key: 'Venus',   jp: '金星', kind: 'planet', color: 0xe8d8a0 },
+  { key: 'Earth',   jp: '地球', kind: 'planet', color: 0x4a90e2 },
   { key: 'Mars',    jp: '火星', kind: 'planet', color: 0xd0552f },
   { key: 'Jupiter', jp: '木星', kind: 'planet', color: 0xd9b58a },
   { key: 'Saturn',  jp: '土星', kind: 'planet', color: 0xe3d6a6 },
@@ -693,6 +694,46 @@ function bodyEqu(key, jd) {
   if (key === 'Sun') return sunEqu(jd);
   if (key === 'Moon') return moonEqu(jd);
   return planetEqu(key, jd);
+}
+
+// Heliocentric ecliptic xyz (AU) for any sky body — used to swap the observer.
+function helio(key, jd) {
+  const T = centuriesSinceJ2000(jd);
+  if (key === 'Sun') return { x: 0, y: 0, z: 0 };
+  if (key === 'Moon') {
+    const earth = helioEcl(ELEMENTS.Earth, T);
+    const Lp = 218.3164477 + 481267.88123421 * T;
+    const D = toRad(297.8501921 + 445267.1114034 * T);
+    const M = toRad(357.5291092 + 35999.0502909 * T);
+    const Mp = toRad(134.9633964 + 477198.8675055 * T);
+    const F = toRad(93.2720950 + 483202.0175233 * T);
+    const lon = toRad(norm360(Lp + 6.289 * Math.sin(Mp) + 1.274 * Math.sin(2 * D - Mp) + 0.658 * Math.sin(2 * D)
+      + 0.214 * Math.sin(2 * Mp) - 0.186 * Math.sin(M) - 0.114 * Math.sin(2 * F)));
+    const lat = toRad(5.128 * Math.sin(F) + 0.281 * Math.sin(Mp + F) + 0.278 * Math.sin(F - Mp) + 0.173 * Math.sin(2 * D - F));
+    const dist = 0.00257; // ~1 lunar distance in AU
+    return {
+      x: earth.x + dist * Math.cos(lat) * Math.cos(lon),
+      y: earth.y + dist * Math.cos(lat) * Math.sin(lon),
+      z: earth.z + dist * Math.sin(lat)
+    };
+  }
+  return ELEMENTS[key] ? helioEcl(ELEMENTS[key], T) : { x: 0, y: 0, z: 0 };
+}
+
+// Apparent RA/Dec of a target body as seen from an observer body.
+// observerKey === targetKey → null (you can't see your own home).
+function bodyEquFrom(targetKey, jd, observerKey = 'Earth') {
+  if (targetKey === observerKey) return null;
+  const o = helio(observerKey, jd);
+  const t = helio(targetKey, jd);
+  const e = obliquityRad(jd); const ce = Math.cos(e), se = Math.sin(e);
+  const dx = t.x - o.x, dy = t.y - o.y, dz = t.z - o.z;
+  const xe = dx, ye = dy * ce - dz * se, ze = dy * se + dz * ce;
+  return {
+    ra: norm24(toDeg(Math.atan2(ye, xe)) / 15),
+    dec: toDeg(Math.atan2(ze, Math.hypot(xe, ye))),
+    dist: Math.hypot(dx, dy, dz)
+  };
 }
 // ==ASTRO_INLINE_END==
 
@@ -1272,6 +1313,7 @@ for (const b of SKY_BODIES) {
   else if (planetTex[b.key]) mat = new THREE.MeshBasicMaterial({ map: planetTex[b.key] });
   else mat = new THREE.MeshBasicMaterial({ color: b.color });
   const mesh = new THREE.Mesh(new THREE.SphereGeometry(size, 32, 32), mat);
+  if (b.key === 'Earth') mesh.renderOrder = 1; // from a non-Earth observer Earth & Moon overlap; draw Earth on top
   bodiesGroup.add(mesh);
   let glow = null;
   if (lum) {
@@ -1287,16 +1329,30 @@ for (const b of SKY_BODIES) {
 
 const _sunWorld = new THREE.Vector3(), _moonWorld = new THREE.Vector3();
 function updateBodies(jd) {
+  const obs = (solarObserver && solarObserver !== 'overview') ? solarObserver : 'Earth';
   for (const s of skyBodies) {
-    const { ra, dec } = bodyEqu(s.key, jd);
-    s.local.copy(raDecToVec(ra, dec, AXIS_LEN * 0.98));
+    const isSelf = s.key === obs;
+    const show = !isSelf;
+    s.mesh.visible = show;
+    if (s.glow) s.glow.visible = show;
+    if (!show) { s.el.style.opacity = '0'; continue; }
+    const eq = bodyEquFrom(s.key, jd, obs);
+    if (!eq) { s.mesh.visible = false; if (s.glow) s.glow.visible = false; continue; }
+    s.local.copy(raDecToVec(eq.ra, eq.dec, AXIS_LEN * 0.98));
     s.mesh.position.copy(s.local);
     if (s.glow) s.glow.position.copy(s.local);
   }
-  // Shine the Moon: sun direction in world coords; scale the glow with the lit fraction.
+  // When we're on Earth we render the textured globe at the scene origin; when
+  // we observe from elsewhere it's a body in the sky, not under our feet.
+  const earthAtCenter = obs === 'Earth' && view !== 'japan';
+  earthMesh.visible = earthAtCenter;
+  grid.visible = earthAtCenter;
+  marker.visible = earthAtCenter;
+
+  // Moon phase shader: sun direction in world coords.
   const sun = skyBodies.find((s) => s.key === 'Sun');
   const moon = skyBodies.find((s) => s.key === 'Moon');
-  if (sun && moon) {
+  if (sun && moon && sun.mesh.visible && moon.mesh.visible) {
     bodiesGroup.localToWorld(_sunWorld.copy(sun.local));
     bodiesGroup.localToWorld(_moonWorld.copy(moon.local));
     moonMat.uniforms.sunDir.value.copy(_sunWorld).sub(_moonWorld).normalize();
@@ -1493,6 +1549,7 @@ function setView(v) {
   stars.visible = true;            // show decorative background stars everywhere
   solarGroup.visible = solar;
   document.body.classList.toggle('is-solar', solar);
+  document.body.classList.toggle('is-japan', japan);
   if (solar) setSolarObserver(solarObserver); // applies current observer (default 'overview')
   else if (v === 'space') { camera.position.copy(spaceCamPos); controls.target.set(0, 0, 0); }
   vSpace.classList.toggle('on', v === 'space');
@@ -1510,7 +1567,11 @@ function setView(v) {
 vSpace.onclick = () => setView('space');
 vJapan.onclick = () => setView('japan');
 vSolar.onclick = () => setView('solar');
-solarObsSelect.onchange = () => setSolarObserver(solarObsSelect.value);
+solarObsSelect.onchange = () => {
+  const k = solarObsSelect.value;
+  if (view === 'solar') setSolarObserver(k);
+  else solarObserver = k; // updateBodies picks it up next frame in 宇宙 view
+};
 
 // Look around in the Japan view: 1-finger / mouse = drag-yaw/pitch, 2-finger = pinch FOV.
 const activePointers = new Map(); // pointerId -> {x, y}
