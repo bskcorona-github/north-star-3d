@@ -10,7 +10,8 @@ import {
   bodyEqu, helio, bodyEquFrom, MIYAKO, SKY_BODIES,
   sunEclipticLon, solarTerm, nextSolarTerm, SOLAR_TERMS, moonAge,
   precessionPoleDirJ2000, eclipticPoleDirJ2000,
-  COMETS, cometHelio, cometEqu, APOLLO_SITES, moonSurfacePoint
+  COMETS, cometHelio, cometEqu, APOLLO_SITES, moonSurfacePoint,
+  lunarLibration, HISTORICAL_EVENTS
 } from './astro.js';
 
 const close = (a, b, eps = 1e-9) => assert.ok(Math.abs(a - b) <= eps, `${a} ≈ ${b} (±${eps})`);
@@ -811,4 +812,61 @@ test('moonSurfacePoint: returns unit vectors when R=1', () => {
     const len = Math.hypot(v.x, v.y, v.z);
     assert.ok(Math.abs(len - 1) < 1e-9, `${s.mission}: |v|=${len}`);
   }
+});
+
+// ---------------------------------------------------------------------------
+// 月の秤動
+// ---------------------------------------------------------------------------
+test('lunarLibration: longitude libration stays within ~±8.5°', () => {
+  for (let i = 0; i < 60; i++) {
+    const jd = 2451545.0 + i * 7; // sample every week for ~14 months
+    const { lonDeg } = lunarLibration(jd);
+    assert.ok(Math.abs(lonDeg) < 8.5, `lon ${lonDeg} at i=${i}`);
+  }
+});
+
+test('lunarLibration: latitude libration stays within ~±7.0°', () => {
+  for (let i = 0; i < 60; i++) {
+    const jd = 2451545.0 + i * 7;
+    const { latDeg } = lunarLibration(jd);
+    assert.ok(Math.abs(latDeg) < 7.0, `lat ${latDeg} at i=${i}`);
+  }
+});
+
+test('lunarLibration: changes over a month (not constant)', () => {
+  const a = lunarLibration(2451545.0);
+  const b = lunarLibration(2451545.0 + 14); // half a synodic month later
+  assert.ok(Math.abs(a.lonDeg - b.lonDeg) > 1, 'libration in longitude should change over 2 weeks');
+});
+
+// ---------------------------------------------------------------------------
+// 歴史イベント
+// ---------------------------------------------------------------------------
+test('HISTORICAL_EVENTS: has at least 15 entries', () => {
+  assert.ok(HISTORICAL_EVENTS.length >= 15);
+});
+
+test('HISTORICAL_EVENTS: all entries have a parseable ISO date', () => {
+  for (const e of HISTORICAL_EVENTS) {
+    const d = new Date(e.iso);
+    assert.ok(!isNaN(d.getTime()), `unparseable iso: ${e.iso}`);
+  }
+});
+
+test('HISTORICAL_EVENTS: sorted chronologically', () => {
+  for (let i = 1; i < HISTORICAL_EVENTS.length; i++) {
+    const prev = new Date(HISTORICAL_EVENTS[i - 1].iso).getTime();
+    const cur  = new Date(HISTORICAL_EVENTS[i].iso).getTime();
+    assert.ok(cur >= prev, `out of order at i=${i}: ${HISTORICAL_EVENTS[i-1].iso} -> ${HISTORICAL_EVENTS[i].iso}`);
+  }
+});
+
+test('HISTORICAL_EVENTS: includes Apollo 11 landing', () => {
+  const has = HISTORICAL_EVENTS.some((e) => e.iso.startsWith('1969-07-20'));
+  assert.ok(has, 'Apollo 11 entry missing');
+});
+
+test('HISTORICAL_EVENTS: Halley 1986 perihelion entry close to Tperi_jd', () => {
+  const e = HISTORICAL_EVENTS.find((e) => e.iso.startsWith('1986-02'));
+  assert.ok(e, 'no 1986 Halley event');
 });

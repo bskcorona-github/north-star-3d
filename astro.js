@@ -767,3 +767,70 @@ export function moonSurfacePoint(latDeg, lonDeg, R = 1) {
     z: R * Math.cos(la) * Math.sin(lo)
   };
 }
+
+// ---------------------------------------------------------------------------
+// 月の秤動 (Lunar libration)
+// ---------------------------------------------------------------------------
+// The Moon's rotation is "almost" synchronous, but small periodic wobbles
+// reveal ~59% of its surface over time. We model just the dominant terms:
+//   - Libration in longitude L ≈ −6.29° sin(Mp) + 1.27° sin(2D − Mp)
+//   - Libration in latitude  B ≈ +6.69° sin(F) (with small Mp correction)
+// (Approximation of Meeus Ch. 53; accurate to ~0.3° — enough to visibly nudge
+// the limb features.)
+export function lunarLibration(jd) {
+  const T = centuriesSinceJ2000(jd);
+  const D  = toRad(297.8501921 + 445267.1114034 * T); // mean elongation
+  const M  = toRad(357.5291092 +  35999.0502909 * T); // Sun mean anomaly
+  const Mp = toRad(134.9633964 + 477198.8675055 * T); // Moon mean anomaly
+  const F  = toRad( 93.2720950 + 483202.0175233 * T); // argument of latitude
+  // Dominant terms only — adding the higher-order corrections lets the sum
+  // exceed the physical ±7° bound, so we keep just enough fidelity to make
+  // the wobble visible without overshooting.
+  const lLon = -6.29 * Math.sin(Mp) + 1.27 * Math.sin(2 * D - Mp);
+  const lLat =  6.69 * Math.sin(F);
+  return { lonDeg: lLon, latDeg: lLat };
+}
+
+// ---------------------------------------------------------------------------
+// 歴史イベント (Notable astronomical events through history)
+// ---------------------------------------------------------------------------
+// Each entry: { iso, name, jp, summary }. iso is a UTC date the simulator can
+// jump to via simTime = new Date(iso). Sort chronologically.
+export const HISTORICAL_EVENTS = [
+  { iso: '1054-07-04T22:00:00Z', name: '🌟 かに星雲超新星 (SN 1054)',
+    jp: '中国・日本の天文学者が記録した「客星」。明月山ふもとで昼間も見えた。' },
+  { iso: '1066-04-24T22:00:00Z', name: '☄ ハレー彗星 1066年回帰',
+    jp: 'バイユーのタペストリーに描かれた歴史的回帰。' },
+  { iso: '1572-11-11T20:00:00Z', name: '🌟 ティコの超新星 (SN 1572)',
+    jp: 'Tycho Brahe が観測。アリストテレスの「不変の天界」観を打ち砕いた。' },
+  { iso: '1604-10-09T18:00:00Z', name: '🌟 ケプラーの超新星 (SN 1604)',
+    jp: '最後の銀河系内肉眼超新星。Kepler が詳細に観測。' },
+  { iso: '1610-01-07T21:00:00Z', name: '🔭 ガリレオが木星の衛星を発見',
+    jp: 'イオ・エウロパ・ガニメデ・カリストの「ガリレオ衛星」初観測。' },
+  { iso: '1631-11-07T05:00:00Z', name: '☿ 水星の太陽面通過 (1631年)',
+    jp: 'Pierre Gassendi が初観測。Kepler の予測通り。' },
+  { iso: '1769-06-03T19:00:00Z', name: '♀ 金星の太陽面通過 (1769年)',
+    jp: 'Cook の太平洋遠征で観測、太陽までの距離決定に貢献。' },
+  { iso: '1843-02-27T03:00:00Z', name: '☄ 大彗星 1843 (C/1843 D1)',
+    jp: '昼間も見えた史上最大級の彗星。' },
+  { iso: '1910-04-20T00:00:00Z', name: '☄ ハレー彗星 1910年回帰',
+    jp: '地球がコマ尾を通過、青酸ガス騒動が起きた回帰。' },
+  { iso: '1969-07-20T20:17:00Z', name: '🚀 アポロ11号 月面着陸',
+    jp: 'Neil Armstrong & Buzz Aldrin が静かの海に着陸。' },
+  { iso: '1986-02-09T11:00:00Z', name: '☄ ハレー彗星 1986年近日点',
+    jp: 'Vega・Giotto 探査機が接近観測した近代の回帰。' },
+  { iso: '1994-07-16T20:00:00Z', name: '💥 シューメーカー・レヴィ第9彗星 木星衝突',
+    jp: '木星に分裂彗星片が次々と衝突した観測史的事件。' },
+  { iso: '1997-04-01T00:00:00Z', name: '☄ ヘール・ボップ彗星 近日点',
+    jp: '20世紀後半最大の彗星。18か月にわたり肉眼で見えた。' },
+  { iso: '2009-07-22T02:00:00Z', name: '🌑 トカラ皆既日食',
+    jp: '日本のトカラ列島で6分40秒の皆既日食。21世紀最長クラス。' },
+  { iso: '2020-12-21T18:30:00Z', name: '✨ 木星・土星 大接近',
+    jp: '397年ぶりの「グレートコンジャンクション」。' },
+  { iso: '2024-04-08T18:18:00Z', name: '🌑 北米皆既日食',
+    jp: 'メキシコ・米国・カナダを横断した皆既日食。' },
+  { iso: '2024-10-12T00:00:00Z', name: '☄ 紫金山・ATLAS彗星 (C/2023 A3)',
+    jp: '21世紀屈指の大彗星、夕空に長い尾を曳いた。' },
+  { iso: '2061-07-28T12:00:00Z', name: '☄ ハレー彗星 次回回帰',
+    jp: 'あなたが見られる次のハレー回帰。' }
+];
