@@ -1870,7 +1870,11 @@ function tick() {
   } else {
     for (const L of triLabels) L.el.style.opacity = '0';
   }
-  for (const s of skyBodies) { bodiesGroup.localToWorld(tmp.copy(s.local)); projectLabel(s.el, tmp); }
+  for (const s of skyBodies) {
+    // updateBodies already hides the observer's own mesh; don't let projection re-show its label
+    if (!s.mesh.visible) { s.el.style.opacity = '0'; continue; }
+    bodiesGroup.localToWorld(tmp.copy(s.local)); projectLabel(s.el, tmp);
+  }
   if (view === 'space' && _fromEarthLbl) { issBody.getWorldPosition(tmp); projectLabel(issLabel, tmp); }
   else issLabel.style.opacity = '0';
   if (view === 'japan') {
