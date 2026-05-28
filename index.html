@@ -1835,7 +1835,7 @@ function tick() {
     for (const L of triLabels) L.el.style.opacity = '0';
   }
   for (const s of skyBodies) { bodiesGroup.localToWorld(tmp.copy(s.local)); projectLabel(s.el, tmp); }
-  if (view === 'space') { issBody.getWorldPosition(tmp); projectLabel(issLabel, tmp); }
+  if (view === 'space' && _fromEarthLbl) { issBody.getWorldPosition(tmp); projectLabel(issLabel, tmp); }
   else issLabel.style.opacity = '0';
   if (view === 'japan') {
     for (const c of compassLabels) { observerRig.localToWorld(tmp.copy(c.local)); projectLabel(c.el, tmp); }
