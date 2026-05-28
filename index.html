@@ -1,0 +1,1389 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+<meta name="theme-color" content="#05060d" />
+<title>北極星はなぜ動かない？ 3Dデモ</title>
+<style>
+  :root { color-scheme: dark; }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; overflow: hidden; background: #05060d; font-family: system-ui, "Hiragino Kaku Gothic ProN", "Yu Gothic", sans-serif; overscroll-behavior: none; }
+  #app { position: fixed; inset: 0; }
+  #app canvas { touch-action: none; display: block; } /* let JS own gestures */
+  #ui {
+    position: fixed; top: 16px; left: 16px; z-index: 10;
+    background: rgba(12, 16, 32, 0.78); backdrop-filter: blur(8px);
+    border: 1px solid rgba(120, 160, 255, 0.25); border-radius: 14px;
+    padding: 16px 18px; color: #dfe6ff; width: 290px; max-width: calc(100vw - 32px);
+    box-shadow: 0 8px 32px rgba(0,0,0,0.5);
+  }
+  #ui h1 { font-size: 16px; margin: 0 0 4px; letter-spacing: .02em; }
+  #ui p.sub { font-size: 11.5px; margin: 0 0 14px; color: #9fb0d8; line-height: 1.5; }
+  .row { display: flex; align-items: center; gap: 10px; margin: 10px 0; font-size: 13px; }
+  .row label { flex: 1; }
+  button.toggle {
+    background: rgba(80,120,255,0.18); border: 1px solid rgba(120,160,255,0.4);
+    color: #dfe6ff; border-radius: 8px; padding: 4px 10px; cursor: pointer; font-size: 12px;
+    transition: background .15s;
+  }
+  button.toggle.on { background: rgba(100,160,255,0.45); }
+  button.toggle:hover { background: rgba(120,160,255,0.35); }
+  .seg { display: flex; gap: 0; margin: 4px 0 12px; border: 1px solid rgba(120,160,255,0.4); border-radius: 10px; overflow: hidden; }
+  .segbtn { flex: 1; background: transparent; color: #aebbe0; border: none; padding: 9px 4px; font-size: 13px; cursor: pointer; transition: background .15s; }
+  .segbtn + .segbtn { border-left: 1px solid rgba(120,160,255,0.3); }
+  .segbtn.on { background: linear-gradient(135deg,#5b8bff,#7a5bff); color: #fff; font-weight: 600; }
+  .segbtn:not(.on):hover { background: rgba(120,160,255,0.18); }
+  input[type=range] { flex: 1.4; accent-color: #ffd86b; }
+  #play {
+    width: 100%; margin-top: 6px; padding: 9px; font-size: 14px; font-weight: 600;
+    background: linear-gradient(135deg,#5b8bff,#7a5bff); border: none; color: white;
+    border-radius: 10px; cursor: pointer;
+  }
+  #play:hover { filter: brightness(1.1); }
+  .note { font-size: 11px; color: #ffd86b; margin-top: 12px; line-height: 1.55; border-top: 1px solid rgba(120,160,255,0.2); padding-top: 10px; }
+  .search { display: flex; gap: 6px; margin: 4px 0 12px; }
+  #searchInput { flex: 1; min-width: 0; background: rgba(8,12,26,0.9); border: 1px solid rgba(120,160,255,0.4);
+    color: #eaf0ff; border-radius: 8px; padding: 8px 10px; font-size: 13px; }
+  #searchInput::placeholder { color: #7d8cb5; }
+  #searchClear { background: rgba(120,160,255,0.18); border: 1px solid rgba(120,160,255,0.4); color: #cdd8f5;
+    border-radius: 8px; width: 34px; cursor: pointer; font-size: 13px; }
+  #searchClear:hover { background: rgba(120,160,255,0.35); }
+  .clock { font-size: 12px; color: #ffd86b; margin: 2px 0 6px; font-variant-numeric: tabular-nums; }
+  .datetime { display: flex; gap: 6px; margin: 0 0 12px; }
+  .datetime input { flex: 1; min-width: 0; background: rgba(8,12,26,0.9); border: 1px solid rgba(120,160,255,0.4);
+    color: #eaf0ff; border-radius: 8px; padding: 6px 8px; font-size: 12px; }
+  .datetime input::-webkit-calendar-picker-indicator { filter: invert(0.8); cursor: pointer; }
+  #nowBtn { background: rgba(120,160,255,0.18); border: 1px solid rgba(120,160,255,0.4); color: #cdd8f5;
+    border-radius: 8px; padding: 6px 10px; cursor: pointer; font-size: 12px; white-space: nowrap; }
+  #nowBtn:hover { background: rgba(120,160,255,0.35); }
+  .tip { position: fixed; z-index: 20; pointer-events: none; opacity: 0; transition: opacity .1s;
+    background: rgba(10,14,30,0.92); border: 1px solid rgba(140,180,255,0.5); color: #eef3ff;
+    font-size: 12.5px; padding: 4px 9px; border-radius: 7px; white-space: nowrap; box-shadow: 0 4px 14px rgba(0,0,0,0.5); }
+
+  /* Hamburger button — visible on small screens to collapse/expand the panel */
+  #panelToggle {
+    position: fixed; top: 12px; left: 12px; z-index: 12;
+    width: 44px; height: 44px; border-radius: 12px;
+    background: rgba(12,16,32,0.85); border: 1px solid rgba(120,160,255,0.4);
+    color: #dfe6ff; font-size: 20px; line-height: 1; cursor: pointer; display: none;
+    box-shadow: 0 4px 14px rgba(0,0,0,0.45);
+  }
+  #panelToggle:hover { background: rgba(20,28,55,0.95); }
+  #ui.hidden { display: none; }
+
+  @media (max-width: 720px) {
+    #panelToggle { display: block; }
+    #ui {
+      top: 64px; left: 12px; right: 12px; width: auto; max-width: 380px;
+      max-height: calc(100vh - 78px); overflow-y: auto;
+      padding: 14px 16px; border-radius: 12px;
+    }
+    #ui h1 { font-size: 15px; }
+    #ui p.sub { font-size: 11px; }
+    .row { font-size: 13px; padding: 2px 0; }
+    button.toggle { min-height: 34px; min-width: 60px; padding: 7px 10px; }
+    .segbtn { padding: 12px 4px; font-size: 13px; }
+    #play { padding: 12px; font-size: 15px; }
+    #searchInput, .datetime input { padding: 10px 10px; font-size: 14px; }
+    #searchClear, #nowBtn { min-height: 38px; min-width: 40px; }
+    #hint { font-size: 10.5px; padding: 5px 10px; bottom: 8px; max-width: calc(100vw - 80px); white-space: normal; text-align: center; }
+  }
+  #hint { position: fixed; bottom: 14px; left: 50%; transform: translateX(-50%); z-index: 10;
+    font-size: 11.5px; color: #8b9bc4; background: rgba(12,16,32,0.6); padding: 6px 14px; border-radius: 20px; }
+  .label {
+    position: fixed; transform: translate(-50%, -130%); pointer-events: none;
+    font-size: 12px; color: #fff; text-shadow: 0 0 6px rgba(0,0,0,0.9); white-space: nowrap;
+    z-index: 5; transition: opacity .2s;
+  }
+  .label.star { color: #ffe9a8; font-weight: 600; }
+</style>
+</head>
+<body>
+<div id="app"></div>
+<button id="panelToggle" aria-label="メニュー">☰</button>
+<div id="ui"
+  <h1>🌟 北極星はなぜ動かない？</h1>
+  <p class="sub">地球の自転軸（こま回しと同じ軸）の延長線上に、ほぼ北極星があります。地球がいくら回っても、軸の真上にある北極星だけは動いて見えません。</p>
+  <div class="seg">
+    <button id="viewSpace" class="segbtn on">🛰 宇宙</button>
+    <button id="viewJapan" class="segbtn">🗾 日本</button>
+    <button id="viewSolar" class="segbtn">☀ 太陽系</button>
+  </div>
+  <div class="search">
+    <input id="searchInput" list="constList" placeholder="🔍 星座を検索（例: オリオン座）" autocomplete="off" aria-label="星座を検索" />
+    <button id="searchClear" title="ハイライト解除">✕</button>
+  </div>
+  <datalist id="constList"></datalist>
+  <div class="clock" id="clockText">📍 宮古島</div>
+  <div class="datetime">
+    <input type="date" id="dateInput" aria-label="日付" />
+    <input type="time" id="timeInput" aria-label="時刻" />
+    <button id="nowBtn" title="現在時刻にする">今</button>
+  </div>
+  <button id="play">⏸ 一時停止</button>
+  <div class="row">
+    <label for="speed">時間の速さ</label>
+    <input id="speed" type="range" min="0" max="100" value="35" aria-label="時間の速さ" />
+  </div>
+  <div class="row">
+    <label>自転軸を表示</label>
+    <button class="toggle on" id="axisBtn">ON</button>
+  </div>
+  <div class="row">
+    <label>こぐま座を表示</label>
+    <button class="toggle on" id="umiBtn">ON</button>
+  </div>
+  <div class="row">
+    <label>北の星座を表示</label>
+    <button class="toggle on" id="constBtn">ON</button>
+  </div>
+  <div class="row">
+    <label>全天の明るい星座</label>
+    <button class="toggle on" id="skyBtn">ON</button>
+  </div>
+  <div class="row">
+    <label>春夏冬の大三角</label>
+    <button class="toggle" id="triBtn">OFF</button>
+  </div>
+  <div class="row">
+    <label>天の川</label>
+    <button class="toggle on" id="mwBtn">ON</button>
+  </div>
+  <div class="row">
+    <label>他の星の見かけの軌跡</label>
+    <button class="toggle" id="trailBtn">OFF</button>
+  </div>
+  <div class="row">
+    <label>地軸の傾き(23.4°)</label>
+    <button class="toggle" id="tiltBtn">OFF</button>
+  </div>
+  <div class="row">
+    <label>地面（日本視点）</label>
+    <button class="toggle on" id="groundBtn">ON</button>
+  </div>
+  <div class="note">💡 黄色い星が北極星（ポラリス）＝こぐま座のしっぽの先。軸のすぐ先なのでほぼ動きません。一方こぐま座の器（コカブ・フェルカド）は極から15〜18°離れているので、再生すると北極星を軸に大きく回ります。</div>
+</div>
+<div id="hint">🖱 ドラッグ=視点回転 / ホイール=ズーム</div>
+<div id="tip" class="tip"></div>
+
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+    "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
+  }
+}
+</script>
+
+<script type="module">
+import * as THREE from 'three';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+
+// ==ASTRO_INLINE_START== (generated from astro.js by `node build.js` — do not edit between the markers)
+// astro.js — pure, dependency-free astronomy & math helpers + star data.
+// No THREE.js, no DOM: everything here is unit-testable in plain Node.
+// Vectors are plain {x, y, z}. The viewer (index.html) wraps these into THREE.Vector3.
+
+// ---------------------------------------------------------------------------
+// Coordinate conversion
+// ---------------------------------------------------------------------------
+
+// Celestial coords (RA in hours, Dec in degrees) -> point {x,y,z} on a sphere of
+// radius D. Dec +90° maps to +Y (the pole), so everything pivots around the axis.
+// (Returns a plain object; the viewer wraps it into a THREE.Vector3.)
+function raDecToXYZ(raHours, decDeg, D = 1) {
+  const ra = raHours * 15 * Math.PI / 180;
+  const dec = decDeg * Math.PI / 180;
+  const h = D * Math.cos(dec);
+  return { x: h * Math.cos(ra), y: D * Math.sin(dec), z: h * Math.sin(ra) };
+}
+
+function length3(v) { return Math.hypot(v.x, v.y, v.z); }
+
+// ---------------------------------------------------------------------------
+// Star naming
+// ---------------------------------------------------------------------------
+
+const GREEK = {
+  alpha: 'α', beta: 'β', gamma: 'γ', delta: 'δ', epsilon: 'ε', eps: 'ε', zeta: 'ζ', eta: 'η',
+  theta: 'θ', iota: 'ι', kappa: 'κ', lambda: 'λ', mu: 'μ', nu: 'ν', xi: 'ξ', pi: 'π',
+  sigma: 'σ', tau: 'τ', upsilon: 'υ', phi: 'φ', chi: 'χ', psi: 'ψ', omega: 'ω'
+};
+
+const PROPER = {
+  dubhe: 'ドゥーベ', merak: 'メラク', phecda: 'フェクダ', megrez: 'メグレズ', alioth: 'アリオト', mizar: 'ミザール', alkaid: 'アルカイド',
+  caph: 'カフ', schedar: 'シェダル', ruchbah: 'ルクバー', segin: 'セギン',
+  betelgeuse: 'ベテルギウス', rigel: 'リゲル', bellatrix: 'ベラトリックス', saiph: 'サイフ', alnitak: 'アルニタク', alnilam: 'アルニラム', mintaka: 'ミンタカ',
+  sirius: 'シリウス', mirzam: 'ミルザム', wezen: 'ウェズン', adhara: 'アダラ', aludra: 'アルドラ',
+  procyon: 'プロキオン', gomeisa: 'ゴメイサ',
+  castor: 'カストル', pollux: 'ポルックス', alhena: 'アルヘナ', wasat: 'ワサト', mebsuta: 'メブスタ', tejat: 'テジャト',
+  aldebaran: 'アルデバラン', elnath: 'エルナト',
+  regulus: 'レグルス', denebola: 'デネボラ',
+  vega: 'ベガ（織姫）',
+  altair: 'アルタイル（彦星）', tarazed: 'タラゼド', alshain: 'アルシャイン',
+  deneb: 'デネブ', sadr: 'サドル', albireo: 'アルビレオ', gienah: 'ギェナー',
+  antares: 'アンタレス',
+  markab: 'マルカブ', scheat: 'シェアト', algenib: 'アルゲニブ', alpheratz: 'アルフェラッツ', enif: 'エニフ',
+  eltanin: 'エルタニン', rastaban: 'ラスタバン', grumium: 'グルミウム', thuban: 'トゥバン',
+  hamal: 'ハマル', sheratan: 'シェラタン', mesarthim: 'メサルティム', spica: 'スピカ', arcturus: 'アークトゥルス'
+};
+
+const ABBR = {
+  'おおぐま座（北斗七星）': 'UMa', 'カシオペヤ座': 'Cas', 'ケフェウス座': 'Cep', 'りゅう座': 'Dra', 'こぐま座': 'UMi',
+  'オリオン座': 'Ori', 'おおいぬ座': 'CMa', 'こいぬ座': 'CMi', 'ふたご座': 'Gem', 'おうし座': 'Tau', 'しし座': 'Leo',
+  'こと座': 'Lyr', 'わし座': 'Aql', 'はくちょう座': 'Cyg', 'さそり座': 'Sco', 'ペガスス座': 'Peg',
+  'おひつじ座': 'Ari', 'かに座': 'Cnc', 'おとめ座': 'Vir', 'てんびん座': 'Lib', 'いて座（南斗）': 'Sgr',
+  'やぎ座': 'Cap', 'みずがめ座': 'Aqr', 'うお座': 'Psc', 'うしかい座': 'Boo'
+};
+
+// Resolve a display name for a star: proper/Japanese name (+ Bayer designation when
+// known), else Greek letter + constellation abbreviation, else the raw key.
+function starName(constName, key, names) {
+  const greek = GREEK[key];
+  const abbr = ABBR[constName] || constName;
+  const proper = (names && names[key]) || PROPER[key];
+  if (proper) return greek ? `${proper}（${greek} ${abbr}）` : proper;
+  return greek ? `${greek} ${abbr}` : key;
+}
+
+// ---------------------------------------------------------------------------
+// Search
+// ---------------------------------------------------------------------------
+
+// Find the best matching constellation name for a query (exact, then partial,
+// tolerant of the trailing '座'). Returns the matched name or null.
+function searchMatch(query, names) {
+  const q = (query || '').trim();
+  if (!q) return null;
+  if (names.includes(q)) return q;
+  const key = q.replace('座', '');
+  return names.find((n) => n.includes(q) || n.replace('座', '').includes(key)) || null;
+}
+
+// ---------------------------------------------------------------------------
+// Observer / horizon geometry
+// ---------------------------------------------------------------------------
+
+// Altitude of the celestial pole above the horizon equals the observer's latitude.
+function poleAltitude(latDeg) { return latDeg; }
+
+// A star is circumpolar (never sets) at latitude lat when dec > 90 - |lat|.
+function isCircumpolar(decDeg, latDeg) { return decDeg > 90 - Math.abs(latDeg); }
+
+// Below the local horizon iff the local-up component is negative.
+function belowHorizon(localY) { return localY < 0; }
+
+// Local "north on the ground" = the celestial axis (+Y) projected onto the tangent
+// plane at `up`. Returns a unit vector. (up must be a unit vector.)
+function observerNorth(up) {
+  const dotY = up.y;
+  let nx = -dotY * up.x, ny = 1 - dotY * up.y, nz = -dotY * up.z;
+  const nl = Math.hypot(nx, ny, nz) || 1;
+  return { x: nx / nl, y: ny / nl, z: nz / nl };
+}
+
+// Given a target expressed in the observer's local frame (x=east, y=up, z=south),
+// return the yaw/pitch that aims the camera (-Z = north) at it. Pitch is clamped.
+function aimYawPitch(v) {
+  const len = Math.hypot(v.x, v.y, v.z) || 1;
+  const pitch = Math.asin(Math.max(-1, Math.min(1, v.y / len)));
+  return {
+    yaw: Math.atan2(-v.x, -v.z),
+    pitch: Math.max(-1.45, Math.min(1.45, pitch))
+  };
+}
+
+// Shortest signed angular difference (radians) for smooth yaw interpolation.
+function shortestAngle(target, current) {
+  const d = target - current;
+  return Math.atan2(Math.sin(d), Math.cos(d));
+}
+
+// ---------------------------------------------------------------------------
+// Solar system / orbital motion
+// ---------------------------------------------------------------------------
+
+// Kepler's third law: orbital angular speed ∝ a^(-3/2), normalized so Earth = 1.
+function keplerRelSpeed(aAU) { return Math.pow(aAU, -1.5); }
+
+// Compressed display radius so inner & outer planets all fit on screen.
+function orbitDisplayRadius(aAU, scale = 3) { return Math.pow(aAU, 0.5) * scale; }
+
+// Position on a flat circular orbit in the XZ plane.
+function planetXZ(angle, orbit) {
+  return { x: Math.cos(angle) * orbit, z: Math.sin(angle) * orbit };
+}
+
+// With Earth advancing `earthStep` radians per frame at `fps`, how many real
+// seconds does one Earth year take on screen?
+function yearSeconds(earthStep, fps = 60) {
+  return (2 * Math.PI / earthStep) / fps;
+}
+
+// Time-compression factor: real seconds in a year ÷ on-screen seconds per year.
+function speedupFactor(earthStep, fps = 60) {
+  return (365.25 * 86400) / yearSeconds(earthStep, fps);
+}
+
+// ---------------------------------------------------------------------------
+// Star data — single source of truth, shared with the viewer and the tests.
+// star entry = [RA hours, Dec deg, magnitude(, color)]
+// ---------------------------------------------------------------------------
+
+const umiStars = {
+  alpha: [2.530, 89.264, 1.98, 0xffe9a8], // Polaris (handle tip) — drawn separately
+  delta: [17.537, 86.586, 4.36, 0xcfe0ff], // Yildun
+  eps:   [16.766, 82.037, 4.21, 0xcfe0ff],
+  zeta:  [15.734, 77.794, 4.29, 0xcfe0ff],
+  eta:   [16.292, 75.755, 4.95, 0xcfe0ff],
+  beta:  [14.845, 74.155, 2.07, 0xffc98a], // Kochab
+  gamma: [15.345, 71.834, 3.00, 0xeef2ff]  // Pherkad
+};
+const umiNames = {
+  delta: 'ユィルドゥン（δ UMi）', eps: 'ε こぐま座', zeta: 'ζ こぐま座', eta: 'η こぐま座',
+  beta: 'コカブ（β UMi）', gamma: 'フェルカド（γ UMi）'
+};
+const umiLinks = [
+  ['alpha', 'delta'], ['delta', 'eps'], ['eps', 'zeta'],
+  ['zeta', 'beta'], ['beta', 'gamma'], ['gamma', 'eta'], ['eta', 'zeta']
+];
+
+const circumpolarConstellations = {
+  'おおぐま座（北斗七星）': {
+    color: 0x9ad0ff, labelKey: 'dubhe',
+    stars: { dubhe: [11.062, 61.75, 1.79], merak: [11.031, 56.38, 2.37], phecda: [11.897, 53.69, 2.44],
+             megrez: [12.257, 57.03, 3.31], alioth: [12.900, 55.96, 1.77], mizar: [13.399, 54.93, 2.23], alkaid: [13.792, 49.31, 1.86] },
+    links: [['dubhe', 'merak'], ['merak', 'phecda'], ['phecda', 'megrez'], ['megrez', 'dubhe'],
+            ['megrez', 'alioth'], ['alioth', 'mizar'], ['mizar', 'alkaid']]
+  },
+  'カシオペヤ座': {
+    color: 0xffb3c8, labelKey: 'gamma', names: { gamma: 'ナビ' },
+    stars: { caph: [0.153, 59.15, 2.28], schedar: [0.675, 56.54, 2.24], gamma: [0.945, 60.72, 2.47],
+             ruchbah: [1.430, 60.24, 2.68], segin: [1.906, 63.67, 3.35] },
+    links: [['caph', 'schedar'], ['schedar', 'gamma'], ['gamma', 'ruchbah'], ['ruchbah', 'segin']]
+  },
+  'ケフェウス座': {
+    color: 0xc6b3ff, labelKey: 'alpha', names: { alpha: 'アルデラミン', beta: 'アルフィルク', gamma: 'エライ' },
+    stars: { alpha: [21.310, 62.59, 2.45], beta: [21.477, 70.56, 3.23], gamma: [23.656, 77.63, 3.21],
+             iota: [22.828, 66.20, 3.52], eta: [20.755, 61.84, 3.43] },
+    links: [['beta', 'gamma'], ['gamma', 'iota'], ['iota', 'alpha'], ['alpha', 'eta'], ['eta', 'beta']]
+  },
+  'りゅう座': {
+    color: 0xa8e6b0, labelKey: 'eltanin',
+    stars: { eltanin: [17.943, 51.49, 2.23], rastaban: [17.507, 52.30, 2.79], grumium: [17.892, 56.87, 3.75], nu: [17.685, 55.18, 4.9],
+             delta: [19.209, 67.66, 3.07], zeta: [17.146, 65.71, 3.17], eta: [16.400, 61.51, 2.73], iota: [15.415, 58.96, 3.29],
+             thuban: [14.073, 64.38, 3.65], kappa: [12.557, 69.79, 3.82], lambda: [11.518, 69.33, 3.84] },
+    links: [['rastaban', 'eltanin'], ['eltanin', 'grumium'], ['grumium', 'nu'], ['nu', 'rastaban'],
+            ['grumium', 'delta'], ['delta', 'zeta'], ['zeta', 'eta'], ['eta', 'iota'], ['iota', 'thuban'],
+            ['thuban', 'kappa'], ['kappa', 'lambda']]
+  }
+};
+
+const skyConstellations = {
+  'オリオン座': { color: 0x9fb8ff, labelKey: 'alnilam',
+    stars: { betelgeuse: [5.919, 7.41, 0.5], rigel: [5.242, -8.20, 0.13], bellatrix: [5.418, 6.35, 1.64], saiph: [5.796, -9.67, 2.07],
+             alnitak: [5.679, -1.94, 1.74], alnilam: [5.604, -1.20, 1.69], mintaka: [5.533, -0.30, 2.23] },
+    links: [['betelgeuse', 'bellatrix'], ['bellatrix', 'mintaka'], ['betelgeuse', 'alnitak'], ['mintaka', 'alnilam'],
+            ['alnilam', 'alnitak'], ['mintaka', 'rigel'], ['alnitak', 'saiph'], ['rigel', 'saiph']] },
+  'おおいぬ座': { color: 0xfff0a0, labelKey: 'sirius',
+    stars: { sirius: [6.752, -16.72, -1.46], mirzam: [6.378, -17.96, 1.98], wezen: [7.140, -26.39, 1.83], adhara: [6.977, -28.97, 1.50], aludra: [7.402, -29.30, 2.45] },
+    links: [['mirzam', 'sirius'], ['sirius', 'wezen'], ['wezen', 'adhara'], ['wezen', 'aludra']] },
+  'こいぬ座': { color: 0xffe0b0, labelKey: 'procyon',
+    stars: { procyon: [7.655, 5.22, 0.34], gomeisa: [7.452, 8.29, 2.89] },
+    links: [['procyon', 'gomeisa']] },
+  'ふたご座': { color: 0xffc0d8, labelKey: 'pollux',
+    stars: { castor: [7.577, 31.89, 1.58], pollux: [7.755, 28.03, 1.14], alhena: [6.629, 16.40, 1.93], wasat: [7.335, 21.98, 3.53], mebsuta: [6.732, 25.13, 3.0], tejat: [6.383, 22.51, 2.87] },
+    links: [['castor', 'pollux'], ['pollux', 'wasat'], ['wasat', 'alhena'], ['castor', 'mebsuta'], ['mebsuta', 'tejat']] },
+  'おうし座': { color: 0xffc890, labelKey: 'aldebaran',
+    stars: { aldebaran: [4.599, 16.51, 0.85], elnath: [5.438, 28.61, 1.65], zeta: [5.627, 21.14, 3.0], gamma: [4.330, 15.63, 3.65] },
+    links: [['aldebaran', 'elnath'], ['aldebaran', 'zeta'], ['aldebaran', 'gamma']] },
+  'しし座': { color: 0xf5d76e, labelKey: 'regulus',
+    stars: { regulus: [10.139, 11.97, 1.36], eta: [10.122, 16.76, 3.48], gamma: [10.333, 19.84, 2.01], zeta: [10.278, 23.42, 3.43],
+             epsilon: [9.764, 23.77, 2.97], delta: [11.235, 20.52, 2.56], theta: [11.237, 15.43, 3.33], denebola: [11.818, 14.57, 2.11] },
+    links: [['regulus', 'eta'], ['eta', 'gamma'], ['gamma', 'zeta'], ['zeta', 'epsilon'], ['gamma', 'delta'],
+            ['delta', 'theta'], ['theta', 'regulus'], ['delta', 'denebola'], ['theta', 'denebola']] },
+  'こと座': { color: 0xa0ffe0, labelKey: 'vega', names: { beta: 'シェリアク', gamma: 'スラファト' },
+    stars: { vega: [18.615, 38.78, 0.03], epsilon: [18.737, 39.61, 4.0], zeta: [18.746, 37.60, 4.3], delta: [18.908, 36.90, 4.3], gamma: [18.982, 32.69, 3.26], beta: [18.835, 33.36, 3.5] },
+    links: [['vega', 'epsilon'], ['vega', 'zeta'], ['zeta', 'delta'], ['delta', 'gamma'], ['gamma', 'beta'], ['beta', 'zeta']] },
+  'わし座': { color: 0xd0c0ff, labelKey: 'altair',
+    stars: { altair: [19.846, 8.87, 0.76], tarazed: [19.771, 10.61, 2.72], alshain: [19.922, 6.41, 3.71], delta: [19.425, 3.12, 3.36], zeta: [19.090, 13.86, 2.99], theta: [20.188, -0.82, 3.23], lambda: [19.104, -4.88, 3.43] },
+    links: [['tarazed', 'altair'], ['altair', 'alshain'], ['altair', 'delta'], ['delta', 'zeta'], ['delta', 'theta'], ['theta', 'lambda']] },
+  'はくちょう座': { color: 0xbfe0ff, labelKey: 'deneb',
+    stars: { deneb: [20.690, 45.28, 1.25], sadr: [20.371, 40.26, 2.23], albireo: [19.512, 27.96, 3.18], delta: [19.750, 45.13, 2.87], gienah: [20.770, 33.97, 2.48] },
+    links: [['deneb', 'sadr'], ['sadr', 'albireo'], ['delta', 'sadr'], ['sadr', 'gienah']] },
+  'さそり座': { color: 0xff9a8a, labelKey: 'antares', names: { beta: 'アクラブ', delta: 'ジュバ', lambda: 'シャウラ', theta: 'サルガス' },
+    stars: { antares: [16.490, -26.43, 1.06], beta: [16.090, -19.81, 2.56], delta: [16.005, -22.62, 2.29], pi: [15.981, -26.11, 2.89], sigma: [16.353, -25.59, 2.89],
+             tau: [16.598, -28.22, 2.82], epsilon: [16.836, -34.29, 2.29], mu: [16.864, -38.05, 3.0], zeta: [16.913, -42.36, 3.62], eta: [17.203, -43.24, 3.33],
+             theta: [17.622, -42.99, 1.87], iota: [17.793, -40.13, 3.03], kappa: [17.708, -39.03, 2.41], lambda: [17.560, -37.10, 1.62], upsilon: [17.512, -37.30, 2.7] },
+    links: [['beta', 'delta'], ['delta', 'pi'], ['delta', 'sigma'], ['sigma', 'antares'], ['antares', 'tau'], ['tau', 'epsilon'], ['epsilon', 'mu'],
+            ['mu', 'zeta'], ['zeta', 'eta'], ['eta', 'theta'], ['theta', 'iota'], ['iota', 'kappa'], ['kappa', 'lambda'], ['lambda', 'upsilon']] },
+  'ペガスス座': { color: 0xc8ffb0, labelKey: 'markab',
+    stars: { markab: [23.079, 15.21, 2.49], scheat: [23.063, 28.08, 2.42], algenib: [0.221, 15.18, 2.83], alpheratz: [0.140, 29.09, 2.06], enif: [21.736, 9.87, 2.39] },
+    links: [['markab', 'scheat'], ['scheat', 'alpheratz'], ['alpheratz', 'algenib'], ['algenib', 'markab'], ['markab', 'enif']] },
+
+  'おひつじ座': { color: 0xffcf9a, labelKey: 'hamal',
+    stars: { hamal: [2.119, 23.46, 2.0], sheratan: [1.911, 20.81, 2.64], mesarthim: [1.892, 19.29, 3.86] },
+    links: [['hamal', 'sheratan'], ['sheratan', 'mesarthim']] },
+  'かに座': { color: 0xc9e0a0, labelKey: 'delta',
+    stars: { iota: [8.778, 28.76, 4.0], gamma: [8.722, 21.47, 4.66], delta: [8.745, 18.15, 3.94], alpha: [8.974, 11.86, 4.25], beta: [8.275, 9.19, 3.5] },
+    links: [['iota', 'gamma'], ['gamma', 'delta'], ['delta', 'alpha'], ['delta', 'beta']] },
+  'おとめ座': { color: 0xa0e0c8, labelKey: 'spica', names: { epsilon: 'ヴィンデミアトリックス', gamma: 'ポリマ' },
+    stars: { spica: [13.420, -11.16, 0.98], zeta: [13.578, -0.60, 3.38], gamma: [12.694, -1.45, 2.74], delta: [12.927, 3.40, 3.38], epsilon: [13.036, 10.96, 2.83], beta: [11.845, 1.76, 3.6] },
+    links: [['epsilon', 'delta'], ['delta', 'gamma'], ['gamma', 'zeta'], ['zeta', 'spica'], ['gamma', 'beta']] },
+  'てんびん座': { color: 0xd0d0ff, labelKey: 'beta', names: { alpha: 'ズベンエルゲヌビ', beta: 'ズベンエスカマリ' },
+    stars: { alpha: [14.848, -16.04, 2.75], beta: [15.283, -9.38, 2.61], gamma: [15.586, -14.79, 3.91], sigma: [15.067, -25.28, 3.29] },
+    links: [['alpha', 'beta'], ['beta', 'gamma'], ['gamma', 'alpha'], ['alpha', 'sigma']] },
+  'いて座（南斗）': { color: 0xffbfa0, labelKey: 'epsilon', names: { epsilon: 'カウス・アウストラリス', sigma: 'ヌンキ', lambda: 'カウス・ボレアリス', delta: 'カウス・メディア' },
+    stars: { gamma: [18.097, -30.42, 2.99], delta: [18.350, -29.83, 2.7], epsilon: [18.403, -34.38, 1.85], zeta: [19.044, -29.88, 2.6],
+             phi: [18.766, -26.99, 3.17], lambda: [18.466, -25.42, 2.81], sigma: [18.921, -26.30, 2.05], tau: [19.116, -27.67, 3.32] },
+    links: [['gamma', 'delta'], ['delta', 'epsilon'], ['epsilon', 'zeta'], ['zeta', 'phi'], ['phi', 'lambda'], ['lambda', 'delta'], ['phi', 'sigma'], ['sigma', 'tau'], ['tau', 'zeta']] },
+  'やぎ座': { color: 0xe0d090, labelKey: 'delta', names: { delta: 'デネブ・アルゲディ', beta: 'ダビ', alpha: 'アルゲディ' },
+    stars: { alpha: [20.300, -12.51, 3.57], beta: [20.350, -14.78, 3.05], omega: [20.864, -26.92, 4.1], zeta: [21.444, -22.41, 3.74], gamma: [21.668, -16.66, 3.68], delta: [21.784, -16.13, 2.85] },
+    links: [['alpha', 'beta'], ['beta', 'omega'], ['omega', 'zeta'], ['zeta', 'gamma'], ['gamma', 'delta'], ['delta', 'alpha']] },
+  'みずがめ座': { color: 0xa0d8ff, labelKey: 'alpha', names: { beta: 'サダルスード', alpha: 'サダルメリク', delta: 'スカト' },
+    stars: { beta: [21.526, -5.57, 2.9], alpha: [22.096, -0.32, 2.95], gamma: [22.361, -1.39, 3.84], zeta: [22.481, -0.02, 3.65], eta: [22.595, -0.12, 4.04], delta: [22.911, -15.82, 3.27] },
+    links: [['beta', 'alpha'], ['alpha', 'gamma'], ['gamma', 'zeta'], ['zeta', 'eta'], ['gamma', 'delta']] },
+  'うお座': { color: 0xbfe0d0, labelKey: 'alpha', names: { alpha: 'アルレシャ' },
+    stars: { eta: [1.524, 15.35, 3.62], alpha: [2.034, 2.76, 3.82], omega: [23.992, 6.86, 4.0], iota: [23.660, 5.63, 4.13], gamma: [23.286, 3.28, 3.69] },
+    links: [['eta', 'alpha'], ['alpha', 'omega'], ['omega', 'iota'], ['iota', 'gamma']] },
+  'うしかい座': { color: 0xffd2a0, labelKey: 'arcturus', names: { epsilon: 'イザール', gamma: 'セギヌス', eta: 'ムフリド' },
+    stars: { arcturus: [14.261, 19.18, -0.05], epsilon: [14.749, 27.07, 2.37], delta: [15.258, 33.31, 3.47], beta: [15.032, 40.39, 3.49], gamma: [14.534, 38.31, 3.03], eta: [13.911, 18.40, 2.68] },
+    links: [['arcturus', 'epsilon'], ['epsilon', 'delta'], ['delta', 'beta'], ['beta', 'gamma'], ['gamma', 'arcturus'], ['arcturus', 'eta']] }
+};
+
+// Seasonal great triangles: [RA hours, Dec deg] for each of the 3 vertices.
+const triangles = {
+  '春の大三角': { color: 0x7dff9e, pts: [[14.261, 19.18], [13.420, -11.16], [11.818, 14.57]] }, // Arcturus, Spica, Denebola
+  '夏の大三角': { color: 0x7dd0ff, pts: [[18.615, 38.78], [20.690, 45.28], [19.846, 8.87]] },   // Vega, Deneb, Altair
+  '冬の大三角': { color: 0xffd27d, pts: [[5.919, 7.41], [6.752, -16.72], [7.655, 5.22]] }        // Betelgeuse, Sirius, Procyon
+};
+
+// Planets: a = semi-major axis (AU). orbit/size are display values; rel speed is
+// derived from `a` via Kepler's third law (see index.html).
+const planetDefs = [
+  { jp: '水星',  en: 'Mercury', a: 0.387, orbit: 2.2,  size: 0.18, color: 0xb0a090 },
+  { jp: '金星',  en: 'Venus',   a: 0.723, orbit: 3.0,  size: 0.32, color: 0xe8d8a0 },
+  { jp: '地球',  en: 'Earth',   a: 1.000, orbit: 3.9,  size: 0.34, color: 0x4a90e2 },
+  { jp: '火星',  en: 'Mars',    a: 1.524, orbit: 4.9,  size: 0.24, color: 0xd0552f },
+  { jp: '木星',  en: 'Jupiter', a: 5.203, orbit: 7.2,  size: 0.92, color: 0xd9b58a },
+  { jp: '土星',  en: 'Saturn',  a: 9.537, orbit: 9.6,  size: 0.78, color: 0xe3d6a6, ring: true },
+  { jp: '天王星', en: 'Uranus',  a: 19.19, orbit: 12.4, size: 0.52, color: 0xa9e6e6 },
+  { jp: '海王星', en: 'Neptune', a: 30.07, orbit: 15.0, size: 0.50, color: 0x5878e6 },
+  { jp: '冥王星', en: 'Pluto',   a: 39.48, orbit: 17.4, size: 0.16, color: 0xb39a86 }
+];
+
+// ===========================================================================
+// Ephemeris: faithful Sun / Moon / planet positions and sidereal time.
+// Accuracy ~arcmin–degree (Standish low-precision elements, valid ~1800–2050);
+// plenty for "which star/planet is where in the sky tonight".
+// ===========================================================================
+
+// Observer location. 宮古島 (Miyako-jima): 24.74°N, 125.28°E.
+const MIYAKO = { name: '宮古島', latDeg: 24.74, lonEastDeg: 125.28 };
+
+const RAD = Math.PI / 180;
+const toRad = (d) => d * RAD;
+const toDeg = (r) => r / RAD;
+const norm360 = (d) => ((d % 360) + 360) % 360;
+const norm24 = (h) => ((h % 24) + 24) % 24;
+
+// Julian Day from a JS Date (uses its absolute UTC instant).
+function julianDay(date) { return date.getTime() / 86400000 + 2440587.5; }
+function centuriesSinceJ2000(jd) { return (jd - 2451545.0) / 36525; }
+
+// Greenwich Mean Sidereal Time (degrees, 0–360).
+function gmstDeg(jd) {
+  const d = jd - 2451545.0;
+  return norm360(280.46061837 + 360.98564736629 * d);
+}
+// Local Sidereal Time (degrees) at an east longitude = RA currently on the meridian.
+function lstDeg(jd, lonEastDeg) { return norm360(gmstDeg(jd) + lonEastDeg); }
+
+const obliquityRad = (jd) => toRad(23.439291 - 0.0130042 * centuriesSinceJ2000(jd));
+
+// Rotate an ecliptic (J2000) vector to equatorial and read off RA(hours)/Dec(deg).
+function eclVecToEqu(x, y, z, jd) {
+  const eps = obliquityRad(jd);
+  const ce = Math.cos(eps), se = Math.sin(eps);
+  const xe = x, ye = y * ce - z * se, ze = y * se + z * ce;
+  return {
+    ra: norm24(toDeg(Math.atan2(ye, xe)) / 15),
+    dec: toDeg(Math.atan2(ze, Math.hypot(xe, ye))),
+    dist: Math.hypot(x, y, z)
+  };
+}
+
+// Convert ecliptic lon/lat (radians) to RA(hours)/Dec(deg).
+function eclipticToEquatorial(lonRad, latRad, jd) {
+  const eps = obliquityRad(jd);
+  const sl = Math.sin(lonRad), cl = Math.cos(lonRad), tb = Math.tan(latRad);
+  return {
+    ra: norm24(toDeg(Math.atan2(sl * Math.cos(eps) - tb * Math.sin(eps), cl)) / 15),
+    dec: toDeg(Math.asin(Math.sin(latRad) * Math.cos(eps) + Math.cos(latRad) * Math.sin(eps) * sl))
+  };
+}
+
+// Standish Keplerian elements at J2000 and their per-century rates:
+// [value0, ratePerCentury] for a(AU), e, I(deg), L(deg), ϖ(deg), Ω(deg).
+const ELEMENTS = {
+  Mercury: { a: [0.38709927, 0.00000037], e: [0.20563593, 0.00001906], I: [7.00497902, -0.00594749], L: [252.25032350, 149472.67411175], w: [77.45779628, 0.16047689], O: [48.33076593, -0.12534081] },
+  Venus:   { a: [0.72333566, 0.00000390], e: [0.00677672, -0.00004107], I: [3.39467605, -0.00078890], L: [181.97909950, 58517.81538729], w: [131.60246718, 0.00268329], O: [76.67984255, -0.27769418] },
+  Earth:   { a: [1.00000261, 0.00000562], e: [0.01671123, -0.00004392], I: [-0.00001531, -0.01294668], L: [100.46457166, 35999.37244981], w: [102.93768193, 0.32327364], O: [0.0, 0.0] },
+  Mars:    { a: [1.52371034, 0.00001847], e: [0.09339410, 0.00007882], I: [1.84969142, -0.00813131], L: [-4.55343205, 19140.30268499], w: [-23.94362959, 0.44441088], O: [49.55953891, -0.29257343] },
+  Jupiter: { a: [5.20288700, -0.00011607], e: [0.04838624, -0.00013253], I: [1.30439695, -0.00183714], L: [34.39644051, 3034.74612775], w: [14.72847983, 0.21252668], O: [100.47390909, 0.20469106] },
+  Saturn:  { a: [9.53667594, -0.00125060], e: [0.05386179, -0.00050991], I: [2.48599187, 0.00193609], L: [49.95424423, 1222.49362201], w: [92.59887831, -0.41897216], O: [113.66242448, -0.28867794] },
+  Uranus:  { a: [19.18916464, -0.00196176], e: [0.04725744, -0.00004397], I: [0.77263783, -0.00242939], L: [313.23810451, 428.48202785], w: [170.95427630, 0.40805281], O: [74.01692503, 0.04240589] },
+  Neptune: { a: [30.06992276, 0.00026291], e: [0.00859048, 0.00005105], I: [1.77004347, 0.00035372], L: [-55.12002969, 218.45945325], w: [44.96476227, -0.32241464], O: [131.78422574, -0.00508664] }
+};
+
+function solveKepler(Mdeg, e) {
+  const eStar = e / RAD; // e in degrees
+  let E = Mdeg + eStar * Math.sin(toRad(Mdeg));
+  for (let i = 0; i < 12; i++) {
+    const dM = Mdeg - (E - eStar * Math.sin(toRad(E)));
+    const dE = dM / (1 - e * Math.cos(toRad(E)));
+    E += dE;
+    if (Math.abs(dE) < 1e-8) break;
+  }
+  return E;
+}
+
+// Heliocentric J2000 ecliptic position (AU) for a planet at T centuries past J2000.
+function helioEcl(el, T) {
+  const a = el.a[0] + el.a[1] * T;
+  const e = el.e[0] + el.e[1] * T;
+  const I = el.I[0] + el.I[1] * T;
+  const L = el.L[0] + el.L[1] * T;
+  const wbar = el.w[0] + el.w[1] * T;
+  const Om = el.O[0] + el.O[1] * T;
+  const w = wbar - Om;
+  let M = norm360(L - wbar); if (M > 180) M -= 360;
+  const E = solveKepler(M, e);
+  const xp = a * (Math.cos(toRad(E)) - e);
+  const yp = a * Math.sqrt(1 - e * e) * Math.sin(toRad(E));
+  const cw = Math.cos(toRad(w)), sw = Math.sin(toRad(w));
+  const cO = Math.cos(toRad(Om)), sO = Math.sin(toRad(Om));
+  const cI = Math.cos(toRad(I)), sI = Math.sin(toRad(I));
+  return {
+    x: (cw * cO - sw * sO * cI) * xp + (-sw * cO - cw * sO * cI) * yp,
+    y: (cw * sO + sw * cO * cI) * xp + (-sw * sO + cw * cO * cI) * yp,
+    z: (sw * sI) * xp + (cw * sI) * yp
+  };
+}
+
+// Geocentric equatorial RA(hours)/Dec(deg) for a planet (key = English name).
+function planetEqu(name, jd) {
+  const T = centuriesSinceJ2000(jd);
+  const p = helioEcl(ELEMENTS[name], T);
+  const earth = helioEcl(ELEMENTS.Earth, T);
+  return eclVecToEqu(p.x - earth.x, p.y - earth.y, p.z - earth.z, jd);
+}
+
+// Geocentric Sun: the Sun is opposite the Earth's heliocentric position.
+function sunEqu(jd) {
+  const e = helioEcl(ELEMENTS.Earth, centuriesSinceJ2000(jd));
+  return eclVecToEqu(-e.x, -e.y, -e.z, jd);
+}
+
+// Geocentric Moon (low-precision series, ~0.1–0.3° accuracy).
+function moonEqu(jd) {
+  const T = centuriesSinceJ2000(jd);
+  const Lp = 218.3164477 + 481267.88123421 * T;
+  const D = toRad(297.8501921 + 445267.1114034 * T);
+  const M = toRad(357.5291092 + 35999.0502909 * T);
+  const Mp = toRad(134.9633964 + 477198.8675055 * T);
+  const F = toRad(93.2720950 + 483202.0175233 * T);
+  const lon = Lp
+    + 6.289 * Math.sin(Mp)
+    + 1.274 * Math.sin(2 * D - Mp)
+    + 0.658 * Math.sin(2 * D)
+    + 0.214 * Math.sin(2 * Mp)
+    - 0.186 * Math.sin(M)
+    - 0.114 * Math.sin(2 * F);
+  const lat = 5.128 * Math.sin(F)
+    + 0.281 * Math.sin(Mp + F)
+    + 0.278 * Math.sin(F - Mp)
+    + 0.173 * Math.sin(2 * D - F);
+  return eclipticToEquatorial(toRad(norm360(lon)), toRad(lat), jd);
+}
+
+// Approximate Moon phase: 0=new, 0.5=full (illuminated fraction grows then shrinks).
+function moonPhase(jd) {
+  const T = centuriesSinceJ2000(jd);
+  const D = norm360(297.8501921 + 445267.1114034 * T); // mean elongation Sun–Moon
+  return { elongationDeg: D, illuminated: (1 - Math.cos(toRad(D))) / 2 };
+}
+
+// Convenience: all sky bodies (Sun, Moon, naked-eye + outer planets) for a date.
+// Returns [{ key, jp, ra, dec, kind, color }].
+const SKY_BODIES = [
+  { key: 'Sun',     jp: '太陽', kind: 'sun',    color: 0xffd14d },
+  { key: 'Moon',    jp: '月',   kind: 'moon',   color: 0xdfe6f0 },
+  { key: 'Mercury', jp: '水星', kind: 'planet', color: 0xb0a090 },
+  { key: 'Venus',   jp: '金星', kind: 'planet', color: 0xe8d8a0 },
+  { key: 'Mars',    jp: '火星', kind: 'planet', color: 0xd0552f },
+  { key: 'Jupiter', jp: '木星', kind: 'planet', color: 0xd9b58a },
+  { key: 'Saturn',  jp: '土星', kind: 'planet', color: 0xe3d6a6 },
+  { key: 'Uranus',  jp: '天王星', kind: 'planet', color: 0xa9e6e6 },
+  { key: 'Neptune', jp: '海王星', kind: 'planet', color: 0x5878e6 }
+];
+
+function bodyEqu(key, jd) {
+  if (key === 'Sun') return sunEqu(jd);
+  if (key === 'Moon') return moonEqu(jd);
+  return planetEqu(key, jd);
+}
+// ==ASTRO_INLINE_END==
+
+const app = document.getElementById('app');
+
+// ---- Renderer / Scene / Camera ----
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+renderer.setSize(innerWidth, innerHeight);
+app.appendChild(renderer.domElement);
+
+const scene = new THREE.Scene();
+
+const camera = new THREE.PerspectiveCamera(45, innerWidth / innerHeight, 0.1, 4000);
+camera.position.set(6, 3.5, 9);
+
+const controls = new OrbitControls(camera, renderer.domElement);
+controls.enableDamping = true;
+controls.dampingFactor = 0.06;
+controls.minDistance = 3;
+controls.maxDistance = 60;
+
+let activeCamera = camera; // switched between space camera and observer camera
+
+// ---- Lights ----
+scene.add(new THREE.AmbientLight(0x556699, 0.55));
+const sun = new THREE.DirectionalLight(0xffffff, 1.6);
+sun.position.set(8, 4, 6);
+scene.add(sun);
+
+// ---- Starfield (fixed background) ----
+function makeStars(count, radius) {
+  const geo = new THREE.BufferGeometry();
+  const pos = new Float32Array(count * 3);
+  const col = new Float32Array(count * 3);
+  for (let i = 0; i < count; i++) {
+    // uniform on sphere
+    const u = Math.random(), v = Math.random();
+    const theta = 2 * Math.PI * u;
+    const phi = Math.acos(2 * v - 1);
+    const r = radius * (0.85 + Math.random() * 0.15);
+    pos[i*3]   = r * Math.sin(phi) * Math.cos(theta);
+    pos[i*3+1] = r * Math.cos(phi);
+    pos[i*3+2] = r * Math.sin(phi) * Math.sin(theta);
+    const t = Math.random();
+    const c = new THREE.Color().setHSL(0.6 - t*0.1, 0.3, 0.6 + Math.random()*0.4);
+    col[i*3]=c.r; col[i*3+1]=c.g; col[i*3+2]=c.b;
+  }
+  geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+  geo.setAttribute('color', new THREE.BufferAttribute(col, 3));
+  const mat = new THREE.PointsMaterial({ size: 1.1, sizeAttenuation: true, vertexColors: true, transparent: true, opacity: 0.9 });
+  return new THREE.Points(geo, mat);
+}
+const stars = makeStars(2500, 900);
+scene.add(stars);
+
+// ---- Earth (rotates around its own Y axis) ----
+const earthGroup = new THREE.Group(); // holds tilt
+scene.add(earthGroup);
+
+const earth = new THREE.Group(); // spins
+earthGroup.add(earth);
+
+const R = 1.6;
+const earthGeo = new THREE.SphereGeometry(R, 64, 48);
+const earthMat = new THREE.MeshPhongMaterial({ color: 0x244b8a, emissive: 0x06122b, shininess: 18, specular: 0x335599 });
+const earthMesh = new THREE.Mesh(earthGeo, earthMat);
+earth.add(earthMesh);
+
+// try to load a real earth texture; fall back to plain blue
+new THREE.TextureLoader().load(
+  'https://unpkg.com/three-globe@2.31.0/example/img/earth-blue-marble.jpg',
+  (tex) => { tex.colorSpace = THREE.SRGBColorSpace; earthMat.map = tex; earthMat.color.set(0xffffff); earthMat.emissive.set(0x111111); earthMat.needsUpdate = true; },
+  undefined,
+  () => {/* keep fallback */}
+);
+
+// lat/long grid so spin is obvious even without texture
+const grid = new THREE.LineSegments(
+  new THREE.WireframeGeometry(new THREE.SphereGeometry(R*1.002, 24, 16)),
+  new THREE.LineBasicMaterial({ color: 0x6fa8ff, transparent: true, opacity: 0.18 })
+);
+earth.add(grid);
+
+// a marker on the surface (e.g. a city) to make rotation undeniable
+const markerLat = MIYAKO.latDeg * Math.PI/180, markerLon = MIYAKO.lonEastDeg * Math.PI/180; // 宮古島
+const marker = new THREE.Mesh(new THREE.SphereGeometry(0.05, 16, 16), new THREE.MeshBasicMaterial({ color: 0xff5a5a }));
+marker.position.set(
+  R * Math.cos(markerLat) * Math.cos(markerLon),
+  R * Math.sin(markerLat),
+  R * Math.cos(markerLat) * Math.sin(markerLon)
+);
+earth.add(marker);
+
+// ---- Observer camera: standing in Japan, looking up at the night sky ----
+// Parented to the spinning Earth, so as the Earth turns the fixed stars sweep
+// across the sky — yet Polaris, sitting on the spin axis, stays put in the north.
+// near plane must be well inside the ground offset (0.08) so the ground is never
+// clipped away when looking steeply down — otherwise you see through the horizon.
+const observerCam = new THREE.PerspectiveCamera(62, innerWidth / innerHeight, 0.01, 4000);
+
+const up = marker.position.clone().normalize();                       // local "up" (zenith)
+const north = new THREE.Vector3(0, 1, 0)                              // axis (+Y) projected onto
+  .addScaledVector(up, -up.y).normalize();                            // the tangent plane => due north
+const camBack = north.clone().multiplyScalar(-1);                    // camera +Z points south
+const camRight = new THREE.Vector3().crossVectors(up, camBack).normalize();
+const basis = new THREE.Matrix4().makeBasis(camRight, up, camBack);
+
+const observerRig = new THREE.Group();                                // stands on the surface in Japan
+observerRig.position.copy(up.clone().multiplyScalar(R));
+observerRig.quaternion.setFromRotationMatrix(basis);
+earth.add(observerRig);
+
+const observerYaw = new THREE.Group();   observerRig.add(observerYaw);   // look left/right
+const observerPitch = new THREE.Group(); observerYaw.add(observerPitch); // look up/down
+observerPitch.add(observerCam);
+
+let obsYaw = 0;
+let obsPitch = markerLat; // tilt the gaze up by our latitude => Polaris sits at center
+function applyObserverLook() {
+  observerYaw.rotation.y = obsYaw;
+  observerPitch.rotation.x = obsPitch;
+}
+applyObserverLook();
+
+// the ground you stand on: a dark lower-hemisphere dome around the observer.
+// Radius (600) sits inside the star sphere (≥700), so every below-horizon star
+// is hidden by the dome from the inside — no matter which way you look.
+const ground = new THREE.Mesh(
+  new THREE.SphereGeometry(600, 48, 24, 0, Math.PI * 2, Math.PI / 2, Math.PI / 2),
+  new THREE.MeshBasicMaterial({ color: 0x05080a, side: THREE.DoubleSide })
+);
+ground.visible = false;           // only shown in the Japan view
+observerRig.add(ground);
+
+// ---- Rotation axis line + Polaris ----
+const AXIS_LEN = 700;
+
+// THREE wrapper around the pure raDecToXYZ (inlined from astro.js)
+function raDecToVec(raHours, decDeg, D) {
+  const p = raDecToXYZ(raHours, decDeg, D);
+  return new THREE.Vector3(p.x, p.y, p.z);
+}
+
+// registries populated as the scene is built (used by hover & search)
+const registry = {};       // constellation name -> { center, mats, label }
+const hoverTargets = [];   // { name, group, local } for each individual star
+
+const axisGroup = new THREE.Group();
+earthGroup.add(axisGroup); // tilts with earth, but does NOT spin
+
+const axisMat = new THREE.LineBasicMaterial({ color: 0xffd86b, transparent: true, opacity: 0.85 });
+const axisGeo = new THREE.BufferGeometry().setFromPoints([
+  new THREE.Vector3(0, -R*1.6, 0),
+  new THREE.Vector3(0,  AXIS_LEN, 0)
+]);
+const axisLine = new THREE.Line(axisGeo, axisMat);
+axisGroup.add(axisLine);
+// small south extension
+const axisSouth = new THREE.Line(
+  new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(0,-R*1.6,0), new THREE.Vector3(0,-R*4,0)]),
+  new THREE.LineBasicMaterial({ color: 0xffd86b, transparent: true, opacity: 0.3 })
+);
+axisGroup.add(axisSouth);
+
+// Polaris: a bright star sitting on the axis, far away
+const polaris = new THREE.Mesh(
+  new THREE.SphereGeometry(7, 24, 24),
+  new THREE.MeshBasicMaterial({ color: 0xffe9a8 })
+);
+// Polaris (α UMi) is the tip of the Little Dipper's handle, ~0.7° off the true pole
+polaris.position.copy(raDecToVec(2.530, 89.264, AXIS_LEN));
+axisGroup.add(polaris);
+// glow sprite
+const glowCanvas = document.createElement('canvas'); glowCanvas.width = glowCanvas.height = 128;
+const gctx = glowCanvas.getContext('2d');
+const grd = gctx.createRadialGradient(64,64,0,64,64,64);
+grd.addColorStop(0,'rgba(255,235,170,1)'); grd.addColorStop(0.3,'rgba(255,220,130,0.6)'); grd.addColorStop(1,'rgba(255,220,130,0)');
+gctx.fillStyle = grd; gctx.fillRect(0,0,128,128);
+const glowTex = new THREE.CanvasTexture(glowCanvas);
+const glow = new THREE.Sprite(new THREE.SpriteMaterial({ map: glowTex, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false }));
+glow.scale.set(60, 60, 1);
+glow.position.copy(polaris.position);
+axisGroup.add(glow);
+
+// ---- Apparent star trails (circles around the pole) ----
+const trailGroup = new THREE.Group();
+trailGroup.visible = false;
+axisGroup.add(trailGroup);
+for (let i = 1; i <= 5; i++) {
+  const radius = 40 + i * 55;
+  const y = AXIS_LEN * 0.55 - i * 30; // spread along axis
+  const pts = [];
+  for (let a = 0; a <= 64; a++) {
+    const t = a/64 * Math.PI*2;
+    pts.push(new THREE.Vector3(Math.cos(t)*radius, y, Math.sin(t)*radius));
+  }
+  const circle = new THREE.Line(
+    new THREE.BufferGeometry().setFromPoints(pts),
+    new THREE.LineBasicMaterial({ color: 0x88c0ff, transparent: true, opacity: 0.35 })
+  );
+  trailGroup.add(circle);
+}
+
+// ---- Ursa Minor (こぐま座 / Little Dipper) ----
+// Real stars placed by RA/Dec. Polaris is the handle tip, right on the pole, so
+// it barely moves; the bowl (Kochab/Pherkad, ~15-18° from the pole) swings in
+// wide circles. The whole dipper pivots around Polaris as the Earth spins.
+const umiGroup = new THREE.Group();
+axisGroup.add(umiGroup); // same non-spinning frame as Polaris & the axis
+
+// umiStars / umiNames / umiLinks come from astro.js (key: [RA hours, Dec deg, magnitude, color])
+const umiPos = {};
+for (const k in umiStars) {
+  const [ra, dec] = umiStars[k];
+  umiPos[k] = raDecToVec(ra, dec, AXIS_LEN);
+}
+// star dots (skip alpha — Polaris already has its own glowing mesh)
+for (const k in umiStars) {
+  if (k === 'alpha') continue;
+  const [, , mag, color] = umiStars[k];
+  const r = 3 + Math.max(0, 4.7 - mag) * 2.4;
+  const dot = new THREE.Mesh(new THREE.SphereGeometry(r, 16, 16), new THREE.MeshBasicMaterial({ color }));
+  dot.position.copy(umiPos[k]);
+  dot.userData.star = umiNames[k];
+  umiGroup.add(dot);
+  hoverTargets.push({ name: umiNames[k], group: umiGroup, local: umiPos[k].clone() });
+}
+// connecting lines (umiLinks from astro.js): handle + bowl
+const umiLineMat = new THREE.LineBasicMaterial({ color: 0x8fb4ff, transparent: true, opacity: 0.55 });
+umiLineMat.userData.base = 0.55;
+for (const [a, b] of umiLinks) {
+  const g = new THREE.BufferGeometry().setFromPoints([umiPos[a], umiPos[b]]);
+  umiGroup.add(new THREE.Line(g, umiLineMat));
+}
+// Polaris is hoverable & searchable too
+polaris.userData.star = '北極星（ポラリス / α UMi）';
+hoverTargets.push({ name: polaris.userData.star, group: axisGroup, local: polaris.position.clone() });
+
+// ---- HTML labels following 3D objects ----
+function makeLabel(text, cls) {
+  const el = document.createElement('div');
+  el.className = 'label' + (cls ? ' '+cls : '');
+  el.textContent = text;
+  document.body.appendChild(el);
+  return el;
+}
+const polarisLabel = makeLabel('★ 北極星（ポラリス）', 'star');
+const axisLabel = makeLabel('地球の自転軸', '');
+const umiLabel = makeLabel('こぐま座', '');
+const kochabLabel = makeLabel('コカブ（β）', 'star');
+
+// ---- Other constellations circling the pole ----
+// Real stars (RA hours, Dec deg, magnitude). All sit in the same non-spinning
+// frame, so they wheel around Polaris as the Earth turns.
+const constGroup = new THREE.Group();
+axisGroup.add(constGroup);
+
+const constellations = circumpolarConstellations; // from astro.js
+
+const constLabels = [];
+for (const name in constellations) {
+  const c = constellations[name];
+  const g = new THREE.Group();
+  const pos = {};
+  for (const k in c.stars) { const [ra, dec] = c.stars[k]; pos[k] = raDecToVec(ra, dec, AXIS_LEN); }
+  for (const k in c.stars) {
+    const mag = c.stars[k][2];
+    const r = 2.6 + Math.max(0, 4.7 - mag) * 2.1;
+    const dot = new THREE.Mesh(new THREE.SphereGeometry(r, 12, 12), new THREE.MeshBasicMaterial({ color: 0xeaf2ff }));
+    dot.position.copy(pos[k]); g.add(dot);
+    const sname = starName(name, k, c.names);
+    dot.userData.star = sname;
+    hoverTargets.push({ name: sname, group: g, local: pos[k].clone() });
+  }
+  const lm = new THREE.LineBasicMaterial({ color: c.color, transparent: true, opacity: 0.5 });
+  lm.userData.base = 0.5;
+  for (const [a, b] of c.links) g.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints([pos[a], pos[b]]), lm));
+  constGroup.add(g);
+  const el = makeLabel(name, '');
+  el.style.color = '#' + new THREE.Color(c.color).getHexString();
+  constLabels.push({ el, local: pos[c.labelKey] });
+  registry[name] = { center: pos[c.labelKey].clone(), mats: [lm], label: el };
+}
+
+// register こぐま座 & 北極星 (built earlier) for search now that labels exist
+registry['こぐま座'] = { center: umiPos.beta.clone(), mats: [umiLineMat], label: umiLabel };
+registry['北極星'] = { center: polaris.position.clone(), mats: [], label: polarisLabel };
+
+// ---- Bright constellations across the whole sky ----
+// Far from the pole, so they swing in big circles — and from Japan they rise
+// and set across the horizon instead of just spinning in place.
+const skyGroup = new THREE.Group();
+axisGroup.add(skyGroup);
+
+function buildConstellationSet(data, parent, labelArr) {
+  for (const name in data) {
+    const c = data[name];
+    const g = new THREE.Group();
+    const pos = {};
+    for (const k in c.stars) { const [ra, dec] = c.stars[k]; pos[k] = raDecToVec(ra, dec, AXIS_LEN); }
+    for (const k in c.stars) {
+      const mag = c.stars[k][2];
+      const r = 2.4 + Math.max(0, 4.7 - mag) * 2.0;
+      const dot = new THREE.Mesh(new THREE.SphereGeometry(r, 12, 12), new THREE.MeshBasicMaterial({ color: 0xeaf2ff }));
+      dot.position.copy(pos[k]); g.add(dot);
+      const sname = starName(name, k, c.names);
+      dot.userData.star = sname;
+      hoverTargets.push({ name: sname, group: g, local: pos[k].clone() });
+    }
+    const lm = new THREE.LineBasicMaterial({ color: c.color, transparent: true, opacity: 0.45 });
+    lm.userData.base = 0.45;
+    for (const [a, b] of c.links) g.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints([pos[a], pos[b]]), lm));
+    parent.add(g);
+    const el = makeLabel(name, '');
+    el.style.color = '#' + new THREE.Color(c.color).getHexString();
+    labelArr.push({ el, local: pos[c.labelKey] });
+    registry[name] = { center: pos[c.labelKey].clone(), mats: [lm], label: el };
+  }
+}
+
+// skyConstellations comes from astro.js
+const skyLabels = [];
+buildConstellationSet(skyConstellations, skyGroup, skyLabels);
+
+// ---- Seasonal great triangles (春・夏・冬の大三角) ----
+const triGroup = new THREE.Group();
+triGroup.visible = false;
+axisGroup.add(triGroup);
+const triLabels = [];
+for (const name in triangles) { // triangles from astro.js
+  const t = triangles[name];
+  const v = t.pts.map(([ra, dec]) => raDecToVec(ra, dec, AXIS_LEN - 5));
+  const mat = new THREE.LineBasicMaterial({ color: t.color, transparent: true, opacity: 0.7 });
+  triGroup.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints([v[0], v[1], v[2], v[0]]), mat));
+  const c = v[0].clone().add(v[1]).add(v[2]).multiplyScalar(1 / 3);
+  const el = makeLabel(name, '');
+  el.style.color = '#' + new THREE.Color(t.color).getHexString();
+  el.style.fontWeight = '600';
+  triLabels.push({ el, local: c });
+}
+
+// ---- Milky Way (天の川): a faint band of stars along the galactic plane ----
+const ngp = raDecToVec(192.85 / 15, 27.13, 1).normalize();          // north galactic pole
+let gx = raDecToVec(266.40 / 15, -28.94, 1).normalize();            // toward galactic center
+gx = gx.sub(ngp.clone().multiplyScalar(gx.dot(ngp))).normalize();  // make orthogonal to NGP
+const gy = new THREE.Vector3().crossVectors(ngp, gx).normalize();
+function galacticDir(l, b) {
+  return gx.clone().multiplyScalar(Math.cos(b) * Math.cos(l))
+    .addScaledVector(gy, Math.cos(b) * Math.sin(l))
+    .addScaledVector(ngp, Math.sin(b));
+}
+const MW_COUNT = 4000, MW_R = 870;
+const mwGeo = new THREE.BufferGeometry();
+const mwPos = new Float32Array(MW_COUNT * 3);
+const mwCol = new Float32Array(MW_COUNT * 3);
+function gauss() { return (Math.random() + Math.random() + Math.random() - 1.5) / 1.5; }
+for (let i = 0; i < MW_COUNT; i++) {
+  const l = Math.random() * Math.PI * 2;
+  const b = gauss() * 0.13;                          // tight to the plane
+  const dir = galacticDir(l, b);
+  const r = MW_R * (0.98 + Math.random() * 0.02);
+  mwPos[i*3] = dir.x*r; mwPos[i*3+1] = dir.y*r; mwPos[i*3+2] = dir.z*r;
+  const br = 0.45 + Math.random() * 0.4;
+  mwCol[i*3] = br; mwCol[i*3+1] = br; mwCol[i*3+2] = br * 1.05;
+}
+mwGeo.setAttribute('position', new THREE.BufferAttribute(mwPos, 3));
+mwGeo.setAttribute('color', new THREE.BufferAttribute(mwCol, 3));
+const milkyWay = new THREE.Points(mwGeo, new THREE.PointsMaterial({ size: 3.2, sizeAttenuation: true, vertexColors: true, transparent: true, opacity: 0.5, blending: THREE.AdditiveBlending, depthWrite: false }));
+axisGroup.add(milkyWay);
+
+// ---- Sun, Moon & planets on the celestial sphere (real positions for the date) ----
+// Positioned each frame from astro.js ephemeris; visible in 宇宙 and 日本 views.
+const bodiesGroup = new THREE.Group();
+axisGroup.add(bodiesGroup);
+const skyBodies = [];
+for (const b of SKY_BODIES) {
+  const lum = b.kind === 'sun' || b.kind === 'moon';
+  const size = b.kind === 'sun' ? 17 : b.kind === 'moon' ? 12 : 7;
+  const mesh = new THREE.Mesh(new THREE.SphereGeometry(size, 20, 20), new THREE.MeshBasicMaterial({ color: b.color }));
+  bodiesGroup.add(mesh);
+  let glow = null;
+  if (lum) {
+    glow = new THREE.Sprite(new THREE.SpriteMaterial({ map: glowTex, color: b.color, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false }));
+    glow.scale.set(b.kind === 'sun' ? 95 : 55, b.kind === 'sun' ? 95 : 55, 1);
+    bodiesGroup.add(glow);
+  }
+  const prefix = b.kind === 'sun' ? '☀ ' : b.kind === 'moon' ? '🌙 ' : '';
+  const el = makeLabel(prefix + b.jp, lum ? 'star' : '');
+  el.style.color = '#' + new THREE.Color(b.color).getHexString();
+  skyBodies.push({ ...b, mesh, glow, el, local: new THREE.Vector3() });
+}
+function updateBodies(jd) {
+  for (const s of skyBodies) {
+    const { ra, dec } = bodyEqu(s.key, jd);
+    s.local.copy(raDecToVec(ra, dec, AXIS_LEN * 0.98));
+    s.mesh.position.copy(s.local);
+    if (s.glow) s.glow.position.copy(s.local);
+  }
+}
+
+// ---- Solar System view (太陽系: 水金地火木土天海冥) ----
+const solarGroup = new THREE.Group();
+solarGroup.visible = false;
+scene.add(solarGroup);
+
+const sunMesh = new THREE.Mesh(new THREE.SphereGeometry(1.25, 32, 32), new THREE.MeshBasicMaterial({ color: 0xffd14d }));
+solarGroup.add(sunMesh);
+const sunGlow = new THREE.Sprite(new THREE.SpriteMaterial({ map: glowTex, color: 0xffcc44, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false }));
+sunGlow.scale.set(5, 5, 1);
+solarGroup.add(sunGlow);
+
+// planetDefs from astro.js; relative orbital speed derived from Kepler's 3rd law
+const planets = [];
+const planetLabels = [];
+for (const p of planetDefs) {
+  // orbit ring
+  const ringPts = [];
+  for (let a = 0; a <= 96; a++) { const t = a/96*Math.PI*2; ringPts.push(new THREE.Vector3(Math.cos(t)*p.orbit, 0, Math.sin(t)*p.orbit)); }
+  solarGroup.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints(ringPts), new THREE.LineBasicMaterial({ color: 0x335577, transparent: true, opacity: 0.5 })));
+  const mesh = new THREE.Mesh(new THREE.SphereGeometry(p.size, 24, 24), new THREE.MeshStandardMaterial({ color: p.color, roughness: 0.85, metalness: 0.0, emissive: new THREE.Color(p.color).multiplyScalar(0.12) }));
+  if (p.ring) {
+    const ring = new THREE.Mesh(new THREE.RingGeometry(p.size*1.4, p.size*2.2, 48), new THREE.MeshBasicMaterial({ color: 0xc9b97e, side: THREE.DoubleSide, transparent: true, opacity: 0.7 }));
+    ring.rotation.x = Math.PI/2.2; mesh.add(ring);
+  }
+  solarGroup.add(mesh);
+  const angle = Math.random() * Math.PI * 2;
+  mesh.position.set(Math.cos(angle) * p.orbit, 0, Math.sin(angle) * p.orbit);
+  planets.push({ mesh, orbit: p.orbit, angle, rel: keplerRelSpeed(p.a) });
+  const el = makeLabel(p.jp, '');
+  el.style.color = '#' + new THREE.Color(p.color).getHexString();
+  planetLabels.push({ el, mesh });
+}
+const sunLabel = makeLabel('☀ 太陽', 'star');
+solarGroup.add(new THREE.PointLight(0xffffff, 2.2, 0, 0.0)); // light from the Sun
+solarGroup.add(new THREE.AmbientLight(0x404858, 0.6));
+
+function projectLabel(el, worldPos) {
+  // In the Japan view, HTML labels don't respect the 3D ground dome, so hide
+  // any label whose anchor is below the local horizon (would be behind the ground).
+  if (view === 'japan' && groundOn && belowHorizon(observerRig.worldToLocal(worldPos.clone()).y)) {
+    el.style.opacity = '0'; return;
+  }
+  const v = worldPos.clone().project(activeCamera);
+  if (v.z > 1) { el.style.opacity = '0'; return; }
+  el.style.opacity = '1';
+  el.style.left = ( (v.x*0.5+0.5) * innerWidth ) + 'px';
+  el.style.top  = ( (-v.y*0.5+0.5) * innerHeight ) + 'px';
+}
+
+// ---- Tilt handling ----
+const TILT = 23.4 * Math.PI/180;
+let tiltOn = false;
+let groundOn = true; // show the ground dome in the Japan view (hides below-horizon sky)
+function applyTilt() { earthGroup.rotation.z = tiltOn ? TILT : 0; }
+
+// ---- UI wiring ----
+let playing = true;
+let speed = 0.35;
+const playBtn = document.getElementById('play');
+playBtn.onclick = () => { playing = !playing; playBtn.textContent = playing ? '⏸ 一時停止' : '▶ 再生'; };
+document.getElementById('speed').oninput = (e) => { speed = e.target.value / 100 * 1.2; };
+
+// ---- Simulated date/time (drives the faithful sky at 宮古島) ----
+let simTime = new Date();
+const dateInput = document.getElementById('dateInput');
+const timeInput = document.getElementById('timeInput');
+const clockText = document.getElementById('clockText');
+const pad = (n) => String(n).padStart(2, '0');
+function syncInputsFromSim() {
+  dateInput.value = `${simTime.getFullYear()}-${pad(simTime.getMonth() + 1)}-${pad(simTime.getDate())}`;
+  timeInput.value = `${pad(simTime.getHours())}:${pad(simTime.getMinutes())}`;
+}
+function setSimFromInputs() {
+  const d = dateInput.value;
+  if (!d) return;
+  simTime = new Date(`${d}T${timeInput.value || '21:00'}`); // local time (= JST for Miyako)
+}
+dateInput.onchange = setSimFromInputs;
+timeInput.onchange = setSimFromInputs;
+document.getElementById('nowBtn').onclick = () => { simTime = new Date(); syncInputsFromSim(); };
+function updateClockUI() {
+  clockText.textContent = `📍 宮古島  ${simTime.getFullYear()}/${pad(simTime.getMonth() + 1)}/${pad(simTime.getDate())} ${pad(simTime.getHours())}:${pad(simTime.getMinutes())}`;
+  if (playing && document.activeElement !== dateInput && document.activeElement !== timeInput) syncInputsFromSim();
+}
+syncInputsFromSim();
+
+function bindToggle(id, onClick) {
+  const btn = document.getElementById(id);
+  const rowLabel = btn.closest('.row') && btn.closest('.row').querySelector('label');
+  if (rowLabel) btn.setAttribute('aria-label', rowLabel.textContent); // describe what ON/OFF means
+  btn.onclick = () => {
+    const on = !btn.classList.contains('on');
+    btn.classList.toggle('on', on);
+    btn.textContent = on ? 'ON' : 'OFF';
+    onClick(on);
+  };
+}
+bindToggle('axisBtn', (on) => { axisLine.visible = on; axisSouth.visible = on; axisLabel.style.display = on ? '' : 'none'; });
+bindToggle('umiBtn', (on) => { umiGroup.visible = on; });
+bindToggle('constBtn', (on) => { constGroup.visible = on; });
+bindToggle('skyBtn', (on) => { skyGroup.visible = on; });
+bindToggle('trailBtn', (on) => { trailGroup.visible = on; });
+bindToggle('tiltBtn', (on) => { tiltOn = on; applyTilt(); });
+bindToggle('groundBtn', (on) => { groundOn = on; ground.visible = on && view === 'japan'; });
+bindToggle('triBtn', (on) => { triGroup.visible = on; });
+bindToggle('mwBtn', (on) => { milkyWay.visible = on; });
+
+// ---- View switching: space / Japan ground / solar system ----
+const hint = document.getElementById('hint');
+const vSpace = document.getElementById('viewSpace');
+const vJapan = document.getElementById('viewJapan');
+const vSolar = document.getElementById('viewSolar');
+let view = 'space';
+const spaceCamPos = new THREE.Vector3(6, 3.5, 9); // remembered space-view camera spot
+function setView(v) {
+  if (view === 'space' && v !== 'space') spaceCamPos.copy(camera.position);
+  view = v;
+  const japan = v === 'japan', solar = v === 'solar';
+  activeCamera = japan ? observerCam : camera;
+  controls.enabled = !japan;
+  ground.visible = japan && groundOn;
+  // standing on Earth, we shouldn't see our own globe's wireframe at our feet
+  earthMesh.visible = !japan; grid.visible = !japan; marker.visible = !japan;
+  earthGroup.visible = !solar;     // hides Earth + axis + all constellations
+  stars.visible = !solar;          // decorative background starfield
+  solarGroup.visible = solar;
+  if (solar) { camera.position.set(0, 20, 34); controls.target.set(0, 0, 0); }
+  else if (v === 'space') { camera.position.copy(spaceCamPos); controls.target.set(0, 0, 0); }
+  vSpace.classList.toggle('on', v === 'space');
+  vJapan.classList.toggle('on', japan);
+  vSolar.classList.toggle('on', solar);
+  const touch = matchMedia('(pointer: coarse)').matches;
+  const drag = touch ? '指でなぞる' : 'ドラッグ';
+  const zoom = touch ? '2本指ピンチ' : 'ホイール';
+  const icon = touch ? '👆' : '🖱';
+  hint.textContent = solar ? `${icon} ${drag}=視点回転 / ${zoom}=ズーム（惑星が公転します）`
+    : japan ? `${icon} ${drag}=空を見回す / ${zoom}=ズーム（再生すると星が回り出す）`
+    : `${icon} ${drag}=視点回転 / ${zoom}=ズーム`;
+  updateAspects();
+}
+vSpace.onclick = () => setView('space');
+vJapan.onclick = () => setView('japan');
+vSolar.onclick = () => setView('solar');
+
+// Look around in the Japan view: 1-finger / mouse = drag-yaw/pitch, 2-finger = pinch FOV.
+const activePointers = new Map(); // pointerId -> {x, y}
+let pinchStartDist = 0, pinchStartFov = 0;
+renderer.domElement.addEventListener('pointerdown', (e) => {
+  if (view !== 'japan') return;
+  try { renderer.domElement.setPointerCapture(e.pointerId); } catch {}
+  activePointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+  if (focusing === 'japan') focusing = null;
+  if (activePointers.size === 2) {
+    const [a, b] = [...activePointers.values()];
+    pinchStartDist = Math.hypot(a.x - b.x, a.y - b.y);
+    pinchStartFov = observerCam.fov;
+  }
+});
+renderer.domElement.addEventListener('pointermove', (e) => {
+  if (view !== 'japan' || !activePointers.has(e.pointerId)) return;
+  const prev = activePointers.get(e.pointerId);
+  activePointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+  if (activePointers.size === 1) {
+    const sens = 0.0042;
+    obsYaw   -= (e.clientX - prev.x) * sens;
+    obsPitch += (e.clientY - prev.y) * sens;
+    obsPitch = Math.max(-1.45, Math.min(1.45, obsPitch));
+    applyObserverLook();
+  } else if (activePointers.size >= 2 && pinchStartDist > 0) {
+    const [a, b] = [...activePointers.values()];
+    const d = Math.hypot(a.x - b.x, a.y - b.y);
+    observerCam.fov = Math.max(25, Math.min(85, pinchStartFov * (pinchStartDist / Math.max(d, 1))));
+    observerCam.updateProjectionMatrix();
+  }
+});
+const releasePointer = (e) => {
+  if (activePointers.delete(e.pointerId) && activePointers.size < 2) pinchStartDist = 0;
+};
+addEventListener('pointerup', releasePointer);
+addEventListener('pointercancel', releasePointer);
+
+// wheel zoom (FOV) for the observer view — mouse only
+renderer.domElement.addEventListener('wheel', (e) => {
+  if (view !== 'japan') return;
+  e.preventDefault();
+  observerCam.fov = Math.max(25, Math.min(85, observerCam.fov + (e.deltaY > 0 ? 3 : -3)));
+  observerCam.updateProjectionMatrix();
+}, { passive: false });
+
+// Collapsible panel for small screens
+const panelToggle = document.getElementById('panelToggle');
+const uiEl = document.getElementById('ui');
+panelToggle.onclick = () => {
+  const hidden = uiEl.classList.toggle('hidden');
+  panelToggle.textContent = hidden ? '☰' : '✕';
+};
+// Start collapsed on narrow screens so the sky is visible first
+if (innerWidth <= 720) { uiEl.classList.add('hidden'); panelToggle.textContent = '☰'; }
+
+// ---- Hover tooltips: name each star under the cursor ----
+const tip = document.getElementById('tip');
+const htmp = new THREE.Vector3();
+function chainVisible(o) { while (o) { if (!o.visible) return false; o = o.parent; } return true; }
+function updateHover(mx, my) {
+  let best = null, bestD = 20 * 20;
+  for (const h of hoverTargets) {
+    if (!chainVisible(h.group)) continue;
+    h.group.localToWorld(htmp.copy(h.local));
+    if (view === 'japan' && groundOn && belowHorizon(observerRig.worldToLocal(htmp.clone()).y)) continue; // below the ground
+    const v = htmp.project(activeCamera);
+    if (v.z > 1) continue;
+    const sx = (v.x * 0.5 + 0.5) * innerWidth, sy = (-v.y * 0.5 + 0.5) * innerHeight;
+    const dx = sx - mx, dy = sy - my, d = dx * dx + dy * dy;
+    if (d < bestD) { bestD = d; best = h.name; }
+  }
+  if (best) { tip.textContent = best; tip.style.left = (mx + 14) + 'px'; tip.style.top = (my + 10) + 'px'; tip.style.opacity = '1'; }
+  else tip.style.opacity = '0';
+}
+renderer.domElement.addEventListener('pointermove', (e) => {
+  if (e.pointerType === 'touch') { tip.style.opacity = '0'; return; } // tap-and-drag isn't hover
+  updateHover(e.clientX, e.clientY);
+});
+renderer.domElement.addEventListener('pointerleave', () => { tip.style.opacity = '0'; });
+
+// ---- Search & focus on a constellation ----
+const focusMark = new THREE.Sprite(new THREE.SpriteMaterial({ map: glowTex, color: 0x66ffff, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false }));
+focusMark.scale.set(80, 80, 1); focusMark.visible = false; axisGroup.add(focusMark);
+
+let focusing = null; // 'space' | 'japan' | null
+const focusCamPos = new THREE.Vector3();
+let targetYaw = 0, targetPitch = 0;
+
+function setDim(dim) {
+  for (const n in registry) for (const m of registry[n].mats) m.opacity = dim ? 0.08 : m.userData.base;
+}
+function clearFocus() { setDim(false); focusMark.visible = false; focusing = null; }
+function focusOn(name) {
+  const entry = registry[name];
+  if (!entry) return;
+  setDim(true);
+  for (const m of entry.mats) m.opacity = 0.95;
+  focusMark.position.copy(entry.center);
+  focusMark.visible = true;
+  const Cw = axisGroup.localToWorld(entry.center.clone());
+  if (view === 'japan') {
+    const aim = aimYawPitch(observerRig.worldToLocal(Cw.clone()));
+    targetYaw = aim.yaw; targetPitch = aim.pitch;
+    focusing = 'japan';
+  } else {
+    const r = Math.max(6, camera.position.length());
+    focusCamPos.copy(Cw).normalize().multiplyScalar(-r);
+    focusing = 'space';
+  }
+}
+controls.addEventListener('start', () => { if (focusing === 'space') focusing = null; });
+
+const searchInput = document.getElementById('searchInput');
+const dl = document.getElementById('constList');
+for (const n in registry) { const o = document.createElement('option'); o.value = n; dl.appendChild(o); }
+function doSearch() {
+  const q = searchInput.value.trim();
+  if (!q) { clearFocus(); return; }
+  const hit = searchMatch(q, Object.keys(registry));
+  if (hit) focusOn(hit);
+}
+searchInput.addEventListener('change', doSearch);
+searchInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') doSearch(); });
+document.getElementById('searchClear').onclick = () => { searchInput.value = ''; clearFocus(); };
+
+// ---- Animate ----
+const tmp = new THREE.Vector3();
+const allCelestialLabels = () => { polarisLabel.style.opacity='0'; axisLabel.style.opacity='0'; umiLabel.style.opacity='0'; kochabLabel.style.opacity='0';
+  for (const L of constLabels) L.el.style.opacity='0'; for (const L of skyLabels) L.el.style.opacity='0'; for (const L of triLabels) L.el.style.opacity='0';
+  for (const s of skyBodies) s.el.style.opacity='0'; };
+function tick() {
+  requestAnimationFrame(tick);
+  if (view !== 'solar') {
+    // faithful sky: advance simulated time, orient the globe by sidereal time,
+    // and place the Sun/Moon/planets where they really are for that instant.
+    if (playing) simTime = new Date(simTime.getTime() + speed * 300000);
+    const jd = julianDay(simTime);
+    earth.rotation.y = gmstDeg(jd) * Math.PI / 180; // Greenwich sidereal angle
+    updateBodies(jd);
+    updateClockUI();
+  }
+  if (playing && view === 'solar') for (const pl of planets) { pl.angle += pl.rel * 0.012; pl.mesh.position.set(Math.cos(pl.angle)*pl.orbit, 0, Math.sin(pl.angle)*pl.orbit); }
+
+  // smoothly steer the view toward a searched constellation
+  if (focusing === 'space') {
+    camera.position.lerp(focusCamPos, 0.08);
+    if (camera.position.distanceTo(focusCamPos) < 0.4) focusing = null;
+  } else if (focusing === 'japan') {
+    const dy = shortestAngle(targetYaw, obsYaw);
+    obsYaw += dy * 0.12; obsPitch += (targetPitch - obsPitch) * 0.12;
+    applyObserverLook();
+    if (Math.abs(dy) < 0.004 && Math.abs(targetPitch - obsPitch) < 0.004) focusing = null;
+  }
+  if (focusMark.visible) { const s = 80 + Math.sin(performance.now() * 0.005) * 22; focusMark.scale.set(s, s, 1); }
+
+  controls.update();
+  renderer.render(scene, activeCamera);
+
+  if (view === 'solar') {
+    allCelestialLabels();
+    sunMesh.getWorldPosition(tmp); projectLabel(sunLabel, tmp);
+    for (const L of planetLabels) { L.mesh.getWorldPosition(tmp); projectLabel(L.el, tmp); }
+    return;
+  }
+  sunLabel.style.opacity = '0';
+  for (const L of planetLabels) L.el.style.opacity = '0';
+
+  // labels
+  polaris.getWorldPosition(tmp); projectLabel(polarisLabel, tmp);
+  axisGroup.localToWorld(tmp.set(0, AXIS_LEN*0.25, 0)); projectLabel(axisLabel, tmp);
+  if (umiGroup.visible) {
+    umiGroup.localToWorld(tmp.copy(umiPos.beta).lerp(umiPos.gamma, 0.5)); projectLabel(umiLabel, tmp);
+    umiGroup.localToWorld(tmp.copy(umiPos.beta)); projectLabel(kochabLabel, tmp);
+  } else {
+    umiLabel.style.opacity = '0';
+    kochabLabel.style.opacity = '0';
+  }
+  if (constGroup.visible) {
+    for (const L of constLabels) { constGroup.localToWorld(tmp.copy(L.local)); projectLabel(L.el, tmp); }
+  } else {
+    for (const L of constLabels) L.el.style.opacity = '0';
+  }
+  if (skyGroup.visible) {
+    for (const L of skyLabels) { skyGroup.localToWorld(tmp.copy(L.local)); projectLabel(L.el, tmp); }
+  } else {
+    for (const L of skyLabels) L.el.style.opacity = '0';
+  }
+  if (triGroup.visible) {
+    for (const L of triLabels) { triGroup.localToWorld(tmp.copy(L.local)); projectLabel(L.el, tmp); }
+  } else {
+    for (const L of triLabels) L.el.style.opacity = '0';
+  }
+  for (const s of skyBodies) { bodiesGroup.localToWorld(tmp.copy(s.local)); projectLabel(s.el, tmp); }
+}
+setView(view); // apply touch-aware hint & initial classes
+tick();
+
+function updateAspects() {
+  const a = innerWidth / innerHeight;
+  camera.aspect = a; camera.updateProjectionMatrix();
+  observerCam.aspect = a; observerCam.updateProjectionMatrix();
+}
+addEventListener('resize', () => {
+  updateAspects();
+  renderer.setSize(innerWidth, innerHeight);
+});
+</script>
+</body>
+</html>
