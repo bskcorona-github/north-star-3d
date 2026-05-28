@@ -1038,8 +1038,9 @@ axisGroup.add(planetPathsGroup);
     { key: 'Saturn',  color: 0xe3d6a6, periodYr: 29.457, opacity: 0.55, r: 0.985 },
     { key: 'Uranus',  color: 0xa9e6e6, periodYr: 84.011, opacity: 0.55, r: 0.985 },
     { key: 'Neptune', color: 0x5878e6, periodYr: 164.79, opacity: 0.55, r: 0.985 },
-    // Moon drawn last + brighter + a hair closer so it stands out of the planet band
-    { key: 'Moon',    color: 0xfff2a8, periodYr: 27.3217 / 365.25, opacity: 0.95, r: 0.975 }
+    // Moon drawn last in front of everything, pure white so it doesn't blend
+    // with the gold ecliptic / Saturn lines.
+    { key: 'Moon',    color: 0xffffff, periodYr: 27.3217 / 365.25, opacity: 1.0,  r: 0.96 }
   ];
   for (const p of defs) {
     const pts = [];
@@ -1048,10 +1049,9 @@ axisGroup.add(planetPathsGroup);
       const eq = bodyEqu(p.key, J2000_JD + (i / N) * dur);
       pts.push(raDecToVec(eq.ra, eq.dec, AXIS_LEN * p.r));
     }
-    const line = new THREE.Line(
-      new THREE.BufferGeometry().setFromPoints(pts),
-      new THREE.LineBasicMaterial({ color: p.color, transparent: true, opacity: p.opacity })
-    );
+    const matOpts = { color: p.color, transparent: true, opacity: p.opacity };
+    if (p.key === 'Moon') matOpts.depthTest = false; // always on top of the planet band
+    const line = new THREE.Line(new THREE.BufferGeometry().setFromPoints(pts), new THREE.LineBasicMaterial(matOpts));
     if (p.key === 'Moon') line.renderOrder = 2;
     planetPathsGroup.add(line);
   }
