@@ -1022,41 +1022,42 @@ axisGroup.add(trailGroup);
 }
 
 // ---- Per-planet apparent tracks on the celestial sphere (geocentric) ----
-// Each planet's RA/Dec sampled over a full orbital period — outer planets show
-// the classic retrograde loops near oppositions; inner planets dance around the
-// Sun's path.
+// Each track is sampled starting from the current simTime, so the body itself
+// always sits ON its track (the Moon especially: nodal regression over 18.6 yr
+// would otherwise put it noticeably off a path sampled from J2000).
 const planetPathsGroup = new THREE.Group();
 planetPathsGroup.visible = false;
 axisGroup.add(planetPathsGroup);
-window.__planetPaths = planetPathsGroup; // temporary debug hook
-{
-  const J2000_JD = 2451545.0;
-  const defs = [
-    { key: 'Mercury', color: 0xb0a090, periodYr: 0.241,  opacity: 0.55, r: 0.985 },
-    { key: 'Venus',   color: 0xe8d8a0, periodYr: 0.616,  opacity: 0.55, r: 0.985 },
-    { key: 'Mars',    color: 0xd0552f, periodYr: 1.881,  opacity: 0.55, r: 0.985 },
-    { key: 'Jupiter', color: 0xd9b58a, periodYr: 11.862, opacity: 0.55, r: 0.985 },
-    { key: 'Saturn',  color: 0xe3d6a6, periodYr: 29.457, opacity: 0.55, r: 0.985 },
-    { key: 'Uranus',  color: 0xa9e6e6, periodYr: 84.011, opacity: 0.55, r: 0.985 },
-    { key: 'Neptune', color: 0x5878e6, periodYr: 164.79, opacity: 0.55, r: 0.985 },
-    // Moon drawn last in front of everything; vibrant magenta so it doesn't
-    // blend with either the gold ecliptic/Saturn lines OR the white starfield.
-    { key: 'Moon',    color: 0xff66ff, periodYr: 27.3217 / 365.25, opacity: 1.0,  r: 0.96 }
-  ];
-  for (const p of defs) {
+const PLANET_PATH_DEFS = [
+  { key: 'Mercury', color: 0xb0a090, periodYr: 0.241,  opacity: 0.55, r: 0.985, depthTest: true,  renderOrder: 0 },
+  { key: 'Venus',   color: 0xe8d8a0, periodYr: 0.616,  opacity: 0.55, r: 0.985, depthTest: true,  renderOrder: 0 },
+  { key: 'Mars',    color: 0xd0552f, periodYr: 1.881,  opacity: 0.55, r: 0.985, depthTest: true,  renderOrder: 0 },
+  { key: 'Jupiter', color: 0xd9b58a, periodYr: 11.862, opacity: 0.55, r: 0.985, depthTest: true,  renderOrder: 0 },
+  { key: 'Saturn',  color: 0xe3d6a6, periodYr: 29.457, opacity: 0.55, r: 0.985, depthTest: true,  renderOrder: 0 },
+  { key: 'Uranus',  color: 0xa9e6e6, periodYr: 84.011, opacity: 0.55, r: 0.985, depthTest: true,  renderOrder: 0 },
+  { key: 'Neptune', color: 0x5878e6, periodYr: 164.79, opacity: 0.55, r: 0.985, depthTest: true,  renderOrder: 0 },
+  { key: 'Moon',    color: 0xff66ff, periodYr: 27.3217 / 365.25, opacity: 1.0, r: 0.96, depthTest: false, renderOrder: 2 }
+];
+function rebuildPlanetPaths(jdStart) {
+  // dispose previous lines
+  for (const c of planetPathsGroup.children) { c.geometry.dispose(); c.material.dispose(); }
+  planetPathsGroup.clear();
+  for (const p of PLANET_PATH_DEFS) {
     const pts = [];
     const N = 360, dur = p.periodYr * 365.25;
     for (let i = 0; i <= N; i++) {
-      const eq = bodyEqu(p.key, J2000_JD + (i / N) * dur);
+      const eq = bodyEqu(p.key, jdStart + (i / N) * dur);
       pts.push(raDecToVec(eq.ra, eq.dec, AXIS_LEN * p.r));
     }
-    const matOpts = { color: p.color, transparent: true, opacity: p.opacity };
-    if (p.key === 'Moon') matOpts.depthTest = false; // always on top of the planet band
-    const line = new THREE.Line(new THREE.BufferGeometry().setFromPoints(pts), new THREE.LineBasicMaterial(matOpts));
-    if (p.key === 'Moon') line.renderOrder = 2;
+    const line = new THREE.Line(
+      new THREE.BufferGeometry().setFromPoints(pts),
+      new THREE.LineBasicMaterial({ color: p.color, transparent: true, opacity: p.opacity, depthTest: p.depthTest })
+    );
+    line.renderOrder = p.renderOrder;
     planetPathsGroup.add(line);
   }
 }
+rebuildPlanetPaths(julianDay(new Date())); // initial paths anchored to "now"
 
 // ---- ISS (International Space Station) ----
 // A small visible satellite orbiting Earth at the real altitude/inclination/
@@ -1529,10 +1530,15 @@ function setSimFromInputs() {
   const d = dateInput.value;
   if (!d) return;
   simTime = new Date(`${d}T${timeInput.value || '21:00'}`); // local time (= JST for Miyako)
+  if (planetPathsGroup.visible) rebuildPlanetPaths(julianDay(simTime));
 }
 dateInput.onchange = setSimFromInputs;
 timeInput.onchange = setSimFromInputs;
-document.getElementById('nowBtn').onclick = () => { simTime = new Date(); syncInputsFromSim(); };
+document.getElementById('nowBtn').onclick = () => {
+  simTime = new Date();
+  syncInputsFromSim();
+  if (planetPathsGroup.visible) rebuildPlanetPaths(julianDay(simTime));
+};
 function updateClockUI(jd) {
   const ph = moonPhaseLabel(jd);
   clockText.textContent = `📍 宮古島  ${simTime.getFullYear()}/${pad(simTime.getMonth() + 1)}/${pad(simTime.getDate())} ${pad(simTime.getHours())}:${pad(simTime.getMinutes())}  ${ph.emoji} ${ph.name}`;
@@ -1557,7 +1563,10 @@ bindToggle('umiBtn', (on) => { umiGroup.visible = on; });
 bindToggle('constBtn', (on) => { constGroup.visible = on; });
 bindToggle('skyBtn', (on) => { skyGroup.visible = on; });
 bindToggle('trailBtn', (on) => { trailGroup.visible = on; });
-bindToggle('planetPathBtn', (on) => { planetPathsGroup.visible = on; });
+bindToggle('planetPathBtn', (on) => {
+  planetPathsGroup.visible = on;
+  if (on) rebuildPlanetPaths(julianDay(simTime)); // re-anchor to current time so bodies sit on their tracks
+});
 bindToggle('tiltBtn', (on) => { tiltOn = on; applyTilt(); });
 bindToggle('groundBtn', (on) => { groundOn = on; ground.visible = palmGroup.visible = on && view === 'japan'; });
 bindToggle('orbitBtn', (on) => { solarOrbitsGroup.visible = on; });
@@ -1811,6 +1820,7 @@ function doSearch() {
       earth.rotation.y = gmstDeg(jd) * Math.PI / 180; // re-orient now so focus aims correctly
       earth.updateMatrixWorld(true);                    // propagate to observerRig
       updateBodies(jd);                                 // position the Moon for the new date
+      if (planetPathsGroup.visible) rebuildPlanetPaths(jd);
     }
     focusOn('月'); // then aim at it
     return;
