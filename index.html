@@ -124,7 +124,7 @@
   <button id="play">⏸ 一時停止</button>
   <div class="row">
     <label for="speed">時間の速さ</label>
-    <input id="speed" type="range" min="0" max="100" value="15" aria-label="時間の速さ" />
+    <input id="speed" type="range" min="0" max="100" value="10" aria-label="時間の速さ" />
   </div>
   <div class="row">
     <label>自転軸を表示</label>
@@ -1161,7 +1161,7 @@ function applyTilt() { earthGroup.rotation.z = tiltOn ? TILT : 0; }
 
 // ---- UI wiring ----
 let playing = true;
-let speed = 0.18; // default: ~30 min sim per real second (matches slider 15)
+let speed = 0.12; // default: matches slider 10 (~36 min sim per real second)
 const playBtn = document.getElementById('play');
 playBtn.onclick = () => { playing = !playing; playBtn.textContent = playing ? '⏸ 一時停止' : '▶ 再生'; };
 document.getElementById('speed').oninput = (e) => { speed = e.target.value / 100 * 1.2; };
