@@ -186,6 +186,10 @@
     <label>黄道（惑星の道）</label>
     <button class="toggle" id="trailBtn">OFF</button>
   </div>
+  <div class="row sky-only">
+    <label>惑星の軌跡</label>
+    <button class="toggle" id="planetPathBtn">OFF</button>
+  </div>
   <div class="row earth-only">
     <label>地軸の傾き(23.4°)</label>
     <button class="toggle" id="tiltBtn">OFF</button>
@@ -1017,6 +1021,38 @@ axisGroup.add(trailGroup);
   ));
 }
 
+// ---- Per-planet apparent tracks on the celestial sphere (geocentric) ----
+// Each planet's RA/Dec sampled over a full orbital period — outer planets show
+// the classic retrograde loops near oppositions; inner planets dance around the
+// Sun's path.
+const planetPathsGroup = new THREE.Group();
+planetPathsGroup.visible = false;
+axisGroup.add(planetPathsGroup);
+{
+  const J2000_JD = 2451545.0;
+  const defs = [
+    { key: 'Mercury', color: 0xb0a090, periodYr: 0.241 },
+    { key: 'Venus',   color: 0xe8d8a0, periodYr: 0.616 },
+    { key: 'Mars',    color: 0xd0552f, periodYr: 1.881 },
+    { key: 'Jupiter', color: 0xd9b58a, periodYr: 11.862 },
+    { key: 'Saturn',  color: 0xe3d6a6, periodYr: 29.457 },
+    { key: 'Uranus',  color: 0xa9e6e6, periodYr: 84.011 },
+    { key: 'Neptune', color: 0x5878e6, periodYr: 164.79 }
+  ];
+  for (const p of defs) {
+    const pts = [];
+    const N = 360, dur = p.periodYr * 365.25;
+    for (let i = 0; i <= N; i++) {
+      const eq = planetEqu(p.key, J2000_JD + (i / N) * dur);
+      pts.push(raDecToVec(eq.ra, eq.dec, AXIS_LEN * 0.985));
+    }
+    planetPathsGroup.add(new THREE.Line(
+      new THREE.BufferGeometry().setFromPoints(pts),
+      new THREE.LineBasicMaterial({ color: p.color, transparent: true, opacity: 0.55 })
+    ));
+  }
+}
+
 // ---- ISS (International Space Station) ----
 // A small visible satellite orbiting Earth at the real altitude/inclination/
 // period. Lives under earthGroup so the orbit tilts with the 地軸 toggle but
@@ -1516,6 +1552,7 @@ bindToggle('umiBtn', (on) => { umiGroup.visible = on; });
 bindToggle('constBtn', (on) => { constGroup.visible = on; });
 bindToggle('skyBtn', (on) => { skyGroup.visible = on; });
 bindToggle('trailBtn', (on) => { trailGroup.visible = on; });
+bindToggle('planetPathBtn', (on) => { planetPathsGroup.visible = on; });
 bindToggle('tiltBtn', (on) => { tiltOn = on; applyTilt(); });
 bindToggle('groundBtn', (on) => { groundOn = on; ground.visible = palmGroup.visible = on && view === 'japan'; });
 bindToggle('orbitBtn', (on) => { solarOrbitsGroup.visible = on; });
